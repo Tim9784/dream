@@ -261,14 +261,21 @@ git pull origin main
 git stash pop
 ```
 
-### Ошибка "SyntaxError: invalid syntax" с f-строками
+### Ошибка "SyntaxError: invalid syntax" с f-строками или в библиотеке openai
 
-Если вы видите ошибку `SyntaxError: invalid syntax` на строке с `f"""` или `f"`, это означает, что на сервере Python 3.5, который не поддерживает f-строки.
+Если вы видите ошибку `SyntaxError: invalid syntax` на строке с `f"""` или `f"`, или ошибку в библиотеке openai (например, `**params,`), это означает, что на сервере Python 3.5, который не поддерживает современный синтаксис.
 
-**Решение:** Код уже обновлен для совместимости с Python 3.5. Просто обновите код с GitHub:
+**Решение:** Код уже обновлен для совместимости с Python 3.5:
+- Заменены f-строки на `.format()`
+- Заменена библиотека `openai` на прямые HTTP-запросы через `requests`
+
+Обновите код с GitHub и переустановите зависимости:
 ```bash
 git pull origin main
+pip install -r requirements.txt
 ```
+
+**Важно:** Теперь используется библиотека `requests` вместо `openai`, что совместимо с Python 3.5.
 
 ### Ошибка "ImportError: No module named 'importlib.metadata'" или "NameError: name 'ModuleNotFoundError' is not defined"
 

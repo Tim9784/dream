@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai
+import requests
 import os
 
 app = Flask(__name__)
@@ -29,13 +29,15 @@ def interpret_dream():
 
 Интерпретация на русском:""".format(dream_text)
         
-        # Отправляем запрос к OpenAI
-        client = openai.OpenAI(api_key=api_key)
+        # Отправляем запрос к OpenAI через API напрямую (совместимо с Python 3.5)
+        headers = {
+            "Authorization": "Bearer {}".format(api_key),
+            "Content-Type": "application/json"
+        }
         
-        # Используем только gpt-4o-mini с оптимизированными параметрами
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [
                 {
                     "role": "system",
                     "content": "Ты психолог по интерпретации снов. Даешь краткие, но полезные интерпретации."
@@ -45,33 +47,43 @@ def interpret_dream():
                     "content": prompt
                 }
             ],
-            temperature=0.7,
-            max_tokens=600  # Уменьшено для ускорения
+            "temperature": 0.7,
+            "max_tokens": 600
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=60
         )
         
-        interpretation = response.choices[0].message.content
+        response.raise_for_status()
+        result = response.json()
+        interpretation = result["choices"][0]["message"]["content"]
         
         return jsonify({'interpretation': interpretation})
         
-    except openai.AuthenticationError as e:
-        print("Authentication error: {}".format(e))
-        error_details = e.response if hasattr(e, 'response') else 'No response'
-        print("Error details: {}".format(error_details))
-        return jsonify({'error': 'INVALID_KEY', 'message': 'Неверный API ключ: {}'.format(str(e))}), 401
-    except openai.APIError as e:
-        print("API error: {}".format(e))
-        print("Error type: {}".format(type(e).__name__))
-        print("Error message: {}".format(str(e)))
-        if hasattr(e, 'response'):
-            print("Response: {}".format(e.response))
-        if hasattr(e, 'status_code'):
-            print("Status code: {}".format(e.status_code))
+    except requests.exceptions.HTTPError as e:
+        print("HTTP error: {}".format(e))
+        status_code = e.response.status_code if hasattr(e, 'response') else None
+        error_message = str(e)
+        
+        try:
+            error_data = e.response.json() if hasattr(e, 'response') else {}
+            error_message = error_data.get('error', {}).get('message', str(e))
+        except:
+            pass
+        
+        print("Status code: {}".format(status_code))
+        print("Error message: {}".format(error_message))
+        
         # Если это ошибка аутентификации, возвращаем 401
-        if hasattr(e, 'status_code') and e.status_code == 401:
-            return jsonify({'error': 'INVALID_KEY', 'message': 'Неверный API ключ: {}'.format(str(e))}), 401
-        return jsonify({'error': 'API_ERROR', 'message': 'Ошибка API: {}'.format(str(e))}), 500
-    except openai.APIConnectionError as e:
-        print("API Connection error: {}".format(e))
+        if status_code == 401:
+            return jsonify({'error': 'INVALID_KEY', 'message': 'Неверный API ключ: {}'.format(error_message)}), 401
+        return jsonify({'error': 'API_ERROR', 'message': 'Ошибка API: {}'.format(error_message)}), status_code or 500
+    except requests.exceptions.RequestException as e:
+        print("Connection error: {}".format(e))
         return jsonify({'error': 'CONNECTION_ERROR', 'message': 'Ошибка подключения: {}'.format(str(e))}), 500
     except Exception as e:
         print("Unexpected error: {}".format(e))
