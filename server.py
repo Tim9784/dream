@@ -23,11 +23,11 @@ def interpret_dream():
         api_key = api_key.strip()
         
         # Оптимизированный промпт (короче = быстрее)
-        prompt = f"""Проанализируй сон и дай интерпретацию. Опиши значения символов и событий. Будь конкретным.
+        prompt = """Проанализируй сон и дай интерпретацию. Опиши значения символов и событий. Будь конкретным.
 
-Сон: {dream_text}
+Сон: {}
 
-Интерпретация на русском:"""
+Интерпретация на русском:""".format(dream_text)
         
         # Отправляем запрос к OpenAI
         client = openai.OpenAI(api_key=api_key)
@@ -54,31 +54,32 @@ def interpret_dream():
         return jsonify({'interpretation': interpretation})
         
     except openai.AuthenticationError as e:
-        print(f"Authentication error: {e}")
-        print(f"Error details: {e.response if hasattr(e, 'response') else 'No response'}")
-        return jsonify({'error': 'INVALID_KEY', 'message': f'Неверный API ключ: {str(e)}'}), 401
+        print("Authentication error: {}".format(e))
+        error_details = e.response if hasattr(e, 'response') else 'No response'
+        print("Error details: {}".format(error_details))
+        return jsonify({'error': 'INVALID_KEY', 'message': 'Неверный API ключ: {}'.format(str(e))}), 401
     except openai.APIError as e:
-        print(f"API error: {e}")
-        print(f"Error type: {type(e).__name__}")
-        print(f"Error message: {str(e)}")
+        print("API error: {}".format(e))
+        print("Error type: {}".format(type(e).__name__))
+        print("Error message: {}".format(str(e)))
         if hasattr(e, 'response'):
-            print(f"Response: {e.response}")
+            print("Response: {}".format(e.response))
         if hasattr(e, 'status_code'):
-            print(f"Status code: {e.status_code}")
+            print("Status code: {}".format(e.status_code))
         # Если это ошибка аутентификации, возвращаем 401
         if hasattr(e, 'status_code') and e.status_code == 401:
-            return jsonify({'error': 'INVALID_KEY', 'message': f'Неверный API ключ: {str(e)}'}), 401
-        return jsonify({'error': 'API_ERROR', 'message': f'Ошибка API: {str(e)}'}), 500
+            return jsonify({'error': 'INVALID_KEY', 'message': 'Неверный API ключ: {}'.format(str(e))}), 401
+        return jsonify({'error': 'API_ERROR', 'message': 'Ошибка API: {}'.format(str(e))}), 500
     except openai.APIConnectionError as e:
-        print(f"API Connection error: {e}")
-        return jsonify({'error': 'CONNECTION_ERROR', 'message': f'Ошибка подключения: {str(e)}'}), 500
+        print("API Connection error: {}".format(e))
+        return jsonify({'error': 'CONNECTION_ERROR', 'message': 'Ошибка подключения: {}'.format(str(e))}), 500
     except Exception as e:
-        print(f"Unexpected error: {e}")
-        print(f"Error type: {type(e)}")
-        print(f"Error class: {type(e).__name__}")
+        print("Unexpected error: {}".format(e))
+        print("Error type: {}".format(type(e)))
+        print("Error class: {}".format(type(e).__name__))
         import traceback
         traceback.print_exc()
-        return jsonify({'error': 'UNKNOWN_ERROR', 'message': f'Неожиданная ошибка: {str(e)}'}), 500
+        return jsonify({'error': 'UNKNOWN_ERROR', 'message': 'Неожиданная ошибка: {}'.format(str(e))}), 500
 
 if __name__ == '__main__':
     # Получаем хост и порт из переменных окружения или используем значения по умолчанию
