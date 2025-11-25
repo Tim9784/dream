@@ -97,7 +97,8 @@ async function interpretDream() {
         const response = await fetch('http://localhost:5000/api/interpret', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json; charset=utf-8',
+                'Accept': 'application/json; charset=utf-8'
             },
             body: JSON.stringify({
                 dream: dreamText,
@@ -116,10 +117,12 @@ async function interpretDream() {
             throw new Error(errorMessage);
         }
 
-        const data = await response.json();
+        // Получаем ответ с правильной кодировкой
+        const responseText = await response.text();
+        const data = JSON.parse(responseText);
         const interpretation = data.interpretation;
 
-        // Показываем результат
+        // Показываем результат (textContent автоматически обрабатывает UTF-8)
         interpretationText.textContent = interpretation;
         resultDiv.style.display = 'block';
         errorDiv.style.display = 'none';

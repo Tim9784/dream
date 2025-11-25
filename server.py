@@ -1,10 +1,42 @@
+# -*- coding: utf-8 -*-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import sys
+import io
+
+# Устанавливаем UTF-8 кодировку для вывода (важно для Python 3.5 на Linux)
+if sys.version_info < (3, 7):
+    # Для Python 3.5 и 3.6
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
+# Устанавливаем кодировку по умолчанию для окружения
+if sys.platform != 'win32':
+    import locale
+    try:
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+    except:
+        try:
+            locale.setlocale(locale.LC_ALL, 'C.UTF-8')
+        except:
+            pass
 
 app = Flask(__name__)
+# Устанавливаем кодировку для Flask ответов
+app.config['JSON_AS_ASCII'] = False  # Важно для правильного отображения русского текста
 CORS(app)  # Разрешаем запросы из браузера
+
+# Middleware для установки правильных заголовков кодировки
+@app.after_request
+def after_request(response):
+    # Устанавливаем UTF-8 только для JSON ответов
+    if response.content_type and 'application/json' in response.content_type:
+        response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    return response
 
 @app.route('/api/interpret', methods=['POST'])
 def interpret_dream():
@@ -95,7 +127,10 @@ def interpret_dream():
 
 if __name__ == '__main__':
     # Получаем хост и порт из переменных окружения или используем значения по умолчанию
-    host = os.getenv('HOST', '0.0.0.0')  # 0.0.0.0 для доступа извне на Linux
+    # Для Windows используем localhost, для Linux - 0.0.0.0
+    import sys
+    default_host = '0.0.0.0' if sys.platform != 'win32' else '127.0.0.1'
+    host = os.getenv('HOST', default_host)
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('DEBUG', 'False').lower() == 'true'  # Отключаем debug для продакшена
     

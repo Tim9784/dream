@@ -320,3 +320,48 @@ python3 --version
 # Если версия 3.5 или ниже, используйте одно из решений выше
 ```
 
+### Проблема с кодировкой русского языка
+
+Если русский текст отображается как кракозябры или знаки вопроса:
+
+**Решение 1: Установите переменные окружения перед запуском**
+```bash
+export PYTHONIOENCODING=utf-8
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
+
+# Затем запустите сервер
+gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
+```
+
+**Решение 2: Добавьте в systemd сервис (если используете)**
+В файле `/etc/systemd/system/dream-interpreter.service` добавьте в секцию `[Service]`:
+```ini
+[Service]
+Environment="PYTHONIOENCODING=utf-8"
+Environment="LC_ALL=en_US.UTF-8"
+Environment="LANG=en_US.UTF-8"
+```
+
+**Решение 3: Установите локаль на сервере**
+```bash
+# Проверьте доступные локали
+locale -a
+
+# Установите UTF-8 локаль (если доступна)
+sudo locale-gen en_US.UTF-8
+sudo update-locale LANG=en_US.UTF-8
+
+# Или для русской локали
+sudo locale-gen ru_RU.UTF-8
+sudo update-locale LANG=ru_RU.UTF-8
+```
+
+**Решение 4: Код уже обновлен для автоматической настройки кодировки**
+Просто обновите код с GitHub:
+```bash
+git pull origin main
+```
+
+Код автоматически настроит UTF-8 кодировку при запуске.
+
