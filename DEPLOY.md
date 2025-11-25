@@ -365,3 +365,43 @@ git pull origin main
 
 Код автоматически настроит UTF-8 кодировку при запуске.
 
+**Решение 5: Проверьте кодировку HTML файла на сервере**
+```bash
+# Проверьте кодировку файла
+file -i index.html
+# Должно показать: index.html: text/html; charset=utf-8
+
+# Если кодировка неправильная, пересохраните файл в UTF-8
+# Или используйте iconv для конвертации
+iconv -f WINDOWS-1251 -t UTF-8 index.html > index.html.utf8
+mv index.html.utf8 index.html
+```
+
+**Решение 6: Если используете nginx, добавьте в конфигурацию**
+```nginx
+server {
+    charset utf-8;
+    source_charset utf-8;
+    
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Важно для кодировки
+        proxy_set_header Accept-Charset "utf-8";
+    }
+}
+```
+
+**Решение 7: Убедитесь, что файлы сохранены в UTF-8**
+```bash
+# Проверьте все HTML/JS файлы
+file -i *.html *.js
+
+# Если нужно, пересохраните файлы в UTF-8 через редактор
+# Или используйте recode
+recode WINDOWS-1251..UTF-8 index.html
+```
+
