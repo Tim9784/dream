@@ -35,7 +35,10 @@ git add .
 git commit -m "Initial commit: Dream interpreter app"
 
 # Добавление удаленного репозитория (замените YOUR_USERNAME на ваш GitHub username)
+# Если remote уже существует, используйте: git remote set-url origin https://github.com/YOUR_USERNAME/timeclick.git
 git remote add origin https://github.com/YOUR_USERNAME/timeclick.git
+# Или обновить существующий:
+# git remote set-url origin https://github.com/YOUR_USERNAME/timeclick.git
 
 # Переименование основной ветки в main (если нужно)
 git branch -M main
