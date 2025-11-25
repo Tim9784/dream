@@ -1,0 +1,21 @@
+[Unit]
+Description=Dream Interpreter Flask App
+After=network.target
+
+[Service]
+Type=notify
+# Замените на вашего пользователя
+User=your_username
+# Замените на полный путь к директории проекта
+WorkingDirectory=/home/your_username/timeclick
+# Замените на путь к вашему виртуальному окружению (если используется)
+Environment="PATH=/home/your_username/timeclick/venv/bin"
+# Или используйте системный Python:
+# ExecStart=/usr/bin/gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
+ExecStart=/home/your_username/timeclick/venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 wsgi:app
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

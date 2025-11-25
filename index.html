@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерпретация снов</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌙 Интерпретация снов</h1>
+            <p class="subtitle">Расскажите свой сон, и мы поможем понять его значение</p>
+        </header>
+
+        <main>
+            <div class="dream-form">
+                <label for="dream-input">Опишите ваш сон:</label>
+                <textarea 
+                    id="dream-input" 
+                    placeholder="Например: Мне снилось, что я летал над океаном и видел дельфинов..."
+                    rows="8"
+                ></textarea>
+                
+                <button id="interpret-btn" onclick="interpretDream()">
+                    <span id="btn-text">Интерпретировать сон</span>
+                    <span id="btn-loader" class="loader" style="display: none;"></span>
+                </button>
+                <div id="timer-container" style="display: none; text-align: center; margin-top: 15px;">
+                    <span id="timer-text" style="color: #667eea; font-size: 0.95em; font-weight: 500;"></span>
+                </div>
+            </div>
+
+            <div id="result" class="result" style="display: none;">
+                <h2>Интерпретация вашего сна:</h2>
+                <div id="interpretation-text"></div>
+            </div>
+
+            <div id="error" class="error" style="display: none;">
+                <h2>Ошибка:</h2>
+                <div id="error-text"></div>
+            </div>
+        </main>
+
+        <footer>
+            <button id="change-key-btn" onclick="changeApiKey()" class="change-key-btn">
+                Изменить API ключ
+            </button>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
