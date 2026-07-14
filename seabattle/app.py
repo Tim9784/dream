@@ -509,15 +509,16 @@ input[type=text]:focus{border-color:var(--accent)}
   <p class="tag">Создай комнату, скинь код другу — и в бой с разных устройств.</p>
 
   <section id="home" class="panel">
+    <h2 style="margin:0 0 12px;font-size:1.1rem;color:#b7d3e0;font-weight:600">Создать комнату</h2>
     <div class="row">
-      <label><span>Твоё имя</span><input id="name" type="text" maxlength="20" placeholder="Капитан"></label>
-    </div>
-    <div class="row" style="margin-top:14px">
-      <button class="btn" id="btnCreate">Создать комнату</button>
+      <label><span>Твоё имя</span><input id="name" type="text" maxlength="20" placeholder="Капитан" autocomplete="nickname"></label>
+      <button class="btn" id="btnCreate" style="margin-top:22px">Создать</button>
     </div>
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h2 style="margin:0 0 12px;font-size:1.1rem;color:#b7d3e0;font-weight:600">Войти по коду</h2>
     <div class="row">
-      <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456"></label>
+      <label><span>Твоё имя</span><input id="joinName" type="text" maxlength="20" placeholder="Игрок 2" autocomplete="nickname"></label>
+      <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" autocomplete="off"></label>
       <button class="btn ghost" id="btnJoin" style="margin-top:22px">Войти</button>
     </div>
     <div class="err" id="homeErr"></div>
@@ -814,12 +815,13 @@ $('btnCreate').onclick = async ()=>{
 $('btnJoin').onclick = async ()=>{
   $('homeErr').textContent='';
   try{
+    const joinName = ($('joinName').value.trim() || $('name').value.trim() || 'Игрок 2');
     const data = await api('/api/room/join', {method:'POST', body:JSON.stringify({
-      name:$('name').value.trim()||'Игрок 2',
+      name: joinName,
       code:($('joinCode').value||'').replace(/\D/g,'').slice(0,6)
     })});
     token=data.token; code=data.code;
-    LS.set({token,code,name:$('name').value.trim()});
+    LS.set({token,code,name:joinName});
     placed=[]; selectedSize=null; horizontal=true;
     buildPlaceGrid(); renderFleet();
     applyState(data.state); startPoll();
@@ -847,7 +849,7 @@ $('joinCode').addEventListener('input', e=>{
   const saved=LS.get();
   if(!saved||!saved.token||!saved.code) return;
   token=saved.token; code=saved.code;
-  if(saved.name) $('name').value=saved.name;
+  if(saved.name){ $('name').value=saved.name; $('joinName').value=saved.name; }
   try{
     const data = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
     applyState(data.state); startPoll();
