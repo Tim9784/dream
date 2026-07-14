@@ -232,12 +232,23 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     st = room["state"]
+    legal: list[dict[str, Any]] = []
+    if (
+        viewer
+        and room.get("phase") == "playing"
+        and room.get("turn") == viewer
+        and (st.get("dice") or [])
+    ):
+        for die in list(st["dice"]):
+            for frm, to in _legal_from(room, viewer, die):
+                legal.append({"die": die, "from": frm, "to": to})
     return {
         "board": st["board"],
         "bar": st["bar"],
         "off": st["off"],
         "dice": st["dice"],
         "rolled": st["rolled"],
+        "legal": legal,
     }
 
 

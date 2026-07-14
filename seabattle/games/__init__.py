@@ -25,7 +25,7 @@ GAMES = {
     },
     "backgammon": {
         "title": "Нарды",
-        "blurb": "Кости, ход и вынос",
+        "blurb": "Классическая доска, кости и вынос",
         "module": backgammon,
     },
 }

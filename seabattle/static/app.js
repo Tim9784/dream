@@ -3,7 +3,7 @@ const GAMES = {
   tictactoe: {title:'Крестики-нолики', blurb:'Классика 3×3'},
   checkers: {title:'Шашки', blurb:'Русские шашки 8×8'},
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
-  backgammon: {title:'Нарды', blurb:'Кости, ход и вынос'},
+  backgammon: {title:'Нарды', blurb:'Классическая доска, кости и вынос'},
 };
 
 const PRESETS = {
@@ -395,19 +395,23 @@ function renderBoardGame(mount, s, kind){
 }
 
 /* ===== Backgammon ===== */
-function bgPointOrder(s){
-  // Ходим снизу вверх: дом игрока внизу экрана.
-  // p1 home = 18..23 bottom-right; show bottom row as advancing toward home.
-  // p2 home = 0..5; flip so their direction visually goes up.
-  const top = [12,13,14,15,16,17,11,10,9,8,7,6];
-  const bot = [18,19,20,21,22,23,5,4,3,2,1,0];
-  if(s.you === 'p2'){
-    return {
-      top: top.map(i => 23-i),
-      bot: bot.map(i => 23-i),
-    };
-  }
-  return {top, bot};
+function bgLayout(you){
+  // Классическая доска: дом текущего игрока — справа внизу.
+  // p1 home 18-23, p2 home 0-5. Для p2 зеркалим индексы.
+  const base = {
+    topLeft:  [11,10,9,8,7,6],
+    topRight: [5,4,3,2,1,0],
+    botLeft:  [12,13,14,15,16,17],
+    botRight: [18,19,20,21,22,23],
+  };
+  if(you !== 'p2') return base;
+  const flip = arr => arr.map(i => 23 - i);
+  return {
+    topLeft: flip(base.topLeft),
+    topRight: flip(base.topRight),
+    botLeft: flip(base.botLeft),
+    botRight: flip(base.botRight),
+  };
 }
 
 function renderBackgammon(mount, s){
@@ -416,85 +420,165 @@ function renderBackgammon(mount, s){
   const bar = gs.bar||{p1:0,p2:0};
   const off = gs.off||{p1:0,p2:0};
   const dice = gs.dice||[];
+  const legal = gs.legal||[];
   const myTurn = s.turn===s.you && s.phase==='playing';
-  const opp = s.you==='p1'?'p2':'p1';
-  const order = bgPointOrder(s);
+  const me = s.you;
+  const opp = me==='p1'?'p2':'p1';
+  const layout = bgLayout(me);
+
+  // auto-pick die if only one unique value remains
+  if(myTurn && dice.length && bgSel.die==null){
+    const uniq=[...new Set(dice)];
+    if(uniq.length===1){ bgSel.die=uniq[0]; bgSel.dieIdx=dice.indexOf(uniq[0]); }
+  }
+
+  function movesFrom(frm){
+    return legal.filter(m => m.from===frm && (bgSel.die==null || m.die===bgSel.die));
+  }
+  function canSelectFrom(frm){
+    if(!myTurn || !dice.length) return false;
+    if(frm==='bar') return (bar[me]||0)>0 && legal.some(m=>m.from==='bar');
+    const v = board[frm]||0;
+    const mine = me==='p1' ? v>0 : v<0;
+    return mine && legal.some(m=>m.from===frm);
+  }
+  const destSet = new Set();
+  if(bgSel.from!=null){
+    movesFrom(bgSel.from).forEach(m=>destSet.add(String(m.to)));
+  }
 
   mount.innerHTML = `
-    <div class="hint" style="margin-bottom:6px">Ты идёшь снизу вверх · дом внизу</div>
+    <div class="hint">Классические нарды · дом справа внизу · выбей блот на бар</div>
     <div class="meta-line">
-      <span>Бар: ты ${bar[s.you]||0} / враг ${bar[opp]||0}</span>
-      <span>Вынесено: ты ${off[s.you]||0}/15 · враг ${off[opp]||0}/15</span>
+      <span>На баре: ты ${bar[me]||0} · соперник ${bar[opp]||0}</span>
+      <span>Вынесено: ты ${off[me]||0}/15 · соперник ${off[opp]||0}/15</span>
     </div>
-    <div class="toolbar">
+    <div class="bg-board">
+      <div class="bg-inner">
+        <div class="bg-quad top" id="bgTL"></div>
+        <div class="bg-bar">
+          <div class="bar-slot" id="bgBarOpp" title="Бар соперника"></div>
+          <div class="bar-slot" id="bgBarMe" title="Твой бар"></div>
+        </div>
+        <div class="bg-quad top" id="bgTR"></div>
+        <div class="bg-off">
+          <div class="off-slot" id="bgOffOpp"><span>Соперник</span><strong id="bgOffOppN">0</strong></div>
+          <div class="off-slot" id="bgOffMe"><span>Твой вынос</span><strong id="bgOffMeN">0</strong></div>
+        </div>
+        <div class="bg-quad bot" id="bgBL"></div>
+        <div class="bg-quad bot" id="bgBR"></div>
+      </div>
+    </div>
+    <div class="bg-controls">
       <button class="btn" id="bgRoll">Бросить кости</button>
-      <button class="btn ghost" id="bgBar">Взять с бара</button>
-      <button class="btn ghost" id="bgOff">Вынести</button>
+      <div class="dice" id="bgDice"></div>
     </div>
-    <div class="dice" id="bgDice"></div>
-    <div class="bg-half" style="grid-template-columns:repeat(12,minmax(0,1fr));margin-top:8px" id="bgTop"></div>
-    <div class="bg-half" style="grid-template-columns:repeat(12,minmax(0,1fr));margin-top:8px" id="bgBot"></div>
-    <p class="hint" style="margin-top:10px">Кость → пункт откуда → пункт куда</p>`;
+    <p class="hint" style="margin-top:8px">Кликни свою шашку (или бар), затем зелёную цель. Кость выбирается сама, если одна.</p>`;
+
+  $('bgOffOppN').textContent = String(off[opp]||0);
+  $('bgOffMeN').textContent = String(off[me]||0);
+  if(destSet.has('off')) $('bgOffMe').classList.add('hint');
 
   const rollBtn=$('bgRoll');
   rollBtn.disabled = !myTurn || (gs.rolled && dice.length>0);
-  rollBtn.onclick=()=>doAction({type:'roll'});
-  $('bgBar').disabled = !myTurn || !(bar[s.you]>0);
-  $('bgBar').onclick=()=>{ if(!myTurn) return; bgSel.from='bar'; renderBackgammon(mount,s); };
-  $('bgOff').disabled = !myTurn || bgSel.from==null || bgSel.die==null;
-  $('bgOff').onclick=()=>{
-    if(!myTurn || bgSel.from==null || bgSel.die==null) return;
-    const from=bgSel.from, die=bgSel.die;
-    bgSel={from:null,die:null,dieIdx:null};
-    doAction({type:'move', from, to:'off', die});
-  };
+  rollBtn.onclick=()=>{ bgSel={from:null,die:null,dieIdx:null}; doAction({type:'roll'}); };
 
   const diceBox=$('bgDice');
   dice.forEach((d,i)=>{
     const el=document.createElement('div');
     el.className='die'+(bgSel.die===d && bgSel.dieIdx===i?' active':'');
     el.textContent=d;
-    el.onclick=()=>{ if(!myTurn) return; bgSel.die=d; bgSel.dieIdx=i; renderBackgammon(mount, s); };
+    el.onclick=()=>{
+      if(!myTurn) return;
+      bgSel.die=d; bgSel.dieIdx=i;
+      renderBackgammon(mount,s);
+    };
     diceBox.appendChild(el);
   });
-  if(bgSel.from==='bar'){
-    const mark=document.createElement('div');
-    mark.className='die active'; mark.textContent='BAR';
-    diceBox.appendChild(mark);
+  if(!dice.length && gs.rolled===false && myTurn){
+    const tip=document.createElement('span'); tip.className='hint'; tip.textContent='Сначала брось кости'; diceBox.appendChild(tip);
   }
 
-  function fill(el, points){
+  function paintBar(el, who, selectable){
     el.innerHTML='';
-    points.forEach(i=>{
+    const n = bar[who]||0;
+    for(let i=0;i<Math.min(n,5);i++){
+      const c=document.createElement('div'); c.className='checker '+who; el.appendChild(c);
+    }
+    if(n>5){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+n; el.appendChild(m); }
+    if(selectable && canSelectFrom('bar')){
+      if(bgSel.from==='bar') el.classList.add('sel');
+      el.onclick=()=>{
+        bgSel.from = bgSel.from==='bar' ? null : 'bar';
+        if(bgSel.from==='bar'){
+          const opts=movesFrom('bar');
+          if(opts.length===1){ bgSel.die=opts[0].die; }
+        }
+        renderBackgammon(mount,s);
+      };
+    }
+  }
+  paintBar($('bgBarOpp'), opp, false);
+  paintBar($('bgBarMe'), me, myTurn);
+
+  $('bgOffMe').onclick=()=>{
+    if(!myTurn || bgSel.from==null) return;
+    const opts = movesFrom(bgSel.from).filter(m=>m.to==='off');
+    if(!opts.length){ $('playErr').textContent='Сюда нельзя'; return; }
+    const pick = opts.find(m=>m.die===bgSel.die) || opts[0];
+    const from=bgSel.from; bgSel={from:null,die:null,dieIdx:null};
+    doAction({type:'move', from, to:'off', die:pick.die});
+  };
+
+  function fillQuad(el, points, top){
+    el.innerHTML='';
+    points.forEach((pointIdx, i)=>{
       const p=document.createElement('div');
-      p.className='bg-point'+(bgSel.from===i?' sel':'');
-      const v=board[i]||0;
+      p.className='bg-point'+(i%2?' alt':'')+(bgSel.from===pointIdx?' sel':'')+(destSet.has(String(pointIdx))?' hint':'');
+      const v=board[pointIdx]||0;
       const count=Math.abs(v);
       const who = v>0?'p1':(v<0?'p2':null);
-      const label=document.createElement('small'); label.textContent=String(i+1); label.style.opacity='.55'; p.appendChild(label);
-      for(let n=0;n<Math.min(count,5);n++){
-        const c=document.createElement('div'); c.className='checker '+(who||''); p.appendChild(c);
+      const stack=document.createElement('div'); stack.className='stack';
+      const show = Math.min(count, 5);
+      for(let n=0;n<show;n++){
+        const c=document.createElement('div'); c.className='checker '+(who||''); stack.appendChild(c);
       }
-      if(count>5){ const m=document.createElement('small'); m.textContent='+'+(count-5); p.appendChild(m); }
+      if(count>5){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+count; stack.appendChild(m); }
+      p.appendChild(stack);
       p.onclick=()=>{
         if(!myTurn) return;
-        if(bgSel.from==='bar'){
-          if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
-          const die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
-          doAction({type:'move', from:'bar', to:i, die});
+        $('playErr').textContent='';
+        // destination click
+        if(bgSel.from!=null && destSet.has(String(pointIdx))){
+          const opts = movesFrom(bgSel.from).filter(m=>m.to===pointIdx);
+          const pick = opts.find(m=>m.die===bgSel.die) || opts[0];
+          if(!pick) return;
+          const from=bgSel.from; bgSel={from:null,die:null,dieIdx:null};
+          doAction({type:'move', from, to:pointIdx, die:pick.die});
           return;
         }
-        if(bgSel.from==null){ bgSel.from=i; renderBackgammon(mount,s); return; }
-        if(bgSel.from===i){ bgSel.from=null; renderBackgammon(mount,s); return; }
-        if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
-        const from=bgSel.from, die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
-        doAction({type:'move', from, to:i, die});
+        // select own point
+        if(!canSelectFrom(pointIdx)){
+          if(bgSel.from!=null){ bgSel.from=null; renderBackgammon(mount,s); }
+          return;
+        }
+        if(bgSel.from===pointIdx){ bgSel.from=null; renderBackgammon(mount,s); return; }
+        bgSel.from=pointIdx;
+        const opts=movesFrom(pointIdx);
+        if(opts.length){
+          const dies=[...new Set(opts.map(o=>o.die))];
+          if(dies.length===1) bgSel.die=dies[0];
+        }
+        renderBackgammon(mount,s);
       };
       el.appendChild(p);
     });
   }
-  fill($('bgTop'), order.top);
-  fill($('bgBot'), order.bot);
+
+  fillQuad($('bgTL'), layout.topLeft, true);
+  fillQuad($('bgTR'), layout.topRight, true);
+  fillQuad($('bgBL'), layout.botLeft, false);
+  fillQuad($('bgBR'), layout.botRight, false);
 }
 
 /* ===== room actions ===== */
