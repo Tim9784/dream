@@ -318,8 +318,57 @@ html[data-theme="light"] .board-frame{background:rgba(15,39,64,.06)}
 .die.active{outline:2px solid #38bdf8;outline-offset:2px}
 .die.used{opacity:.35;cursor:default}
 .meta-line{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;color:var(--soft);font-size:.9rem;margin-bottom:8px}
+
+/* durak */
+.durak{max-width:640px;margin:0 auto}
+.durak-meta{
+  display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  color:var(--soft);font-size:.92rem;margin-bottom:10px;
+}
+.durak-trump{font-weight:800;color:var(--text);font-size:1.1rem}
+.durak-trump.red{color:#ef4444}
+.durak-role{color:var(--soft);font-size:.88rem;margin-bottom:8px;text-align:center}
+.durak-hand{
+  display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:72px;align-items:flex-end;
+}
+.durak-table{
+  min-height:120px;margin:14px 0;padding:14px 10px;border-radius:14px;
+  border:1px dashed var(--line);background:rgba(0,0,0,.12);
+  display:flex;flex-wrap:wrap;gap:12px;justify-content:center;align-items:center;
+}
+html[data-theme="light"] .durak-table{background:rgba(15,39,64,.05)}
+.durak-empty{color:var(--soft);font-size:.9rem}
+.dpair{position:relative;width:78px;height:100px}
+.dpair .dcard{position:absolute;left:0;top:0}
+.dpair .dcard.beat{left:18px;top:22px;z-index:2;transform:rotate(12deg)}
+.dpair .dcard.ghost{left:18px;top:22px;opacity:.35;border-style:dashed}
+.dcard{
+  width:60px;height:84px;border-radius:10px;border:1px solid rgba(15,23,42,.25);
+  background:linear-gradient(165deg,#fffef8,#e8e2d4);color:#0f172a;
+  font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:1.05rem;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 8px rgba(0,0,0,.25);cursor:default;padding:0;
+}
+.dcard.red{color:#dc2626}
+.dcard.back{
+  background:
+    linear-gradient(135deg,rgba(255,255,255,.08),transparent 40%),
+    repeating-linear-gradient(45deg,#1d4f6e 0 6px,#163e57 6px 12px);
+  border-color:#0b3a52;color:transparent;
+}
+.dcard.playable{
+  cursor:pointer;outline:2px solid var(--accent);outline-offset:2px;
+  transform:translateY(-6px);transition:transform .12s ease;
+}
+.dcard.playable:hover{transform:translateY(-10px)}
+.dcard:disabled{opacity:.92;cursor:default}
+.durak-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0}
+.durak-me{margin-top:6px}
+.durak-opp{margin-bottom:4px}
 @media(max-width:560px){
   .bg-inner{grid-template-columns:1fr 26px 1fr 32px;min-height:300px}
   .bg-point{min-height:120px}
   .checker{width:30px;height:30px;min-width:30px;min-height:30px;flex-basis:30px}
+  .dcard{width:52px;height:74px;font-size:.95rem}
+  .dpair{width:68px;height:90px}
 }

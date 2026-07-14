@@ -4,6 +4,7 @@ const GAMES = {
   checkers: {title:'Шашки', blurb:'Русские шашки 8×8'},
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
   backgammon: {title:'Нарды', blurb:'Длинные нарды — все с одной головы'},
+  durak: {title:'Дурак', blurb:'Подкидной на двоих, колода 36'},
 };
 
 const PRESETS = {
@@ -154,6 +155,7 @@ function renderGame(s){
   if(s.game==='checkers') return renderBoardGame(mount, s, 'checkers');
   if(s.game==='chess') return renderBoardGame(mount, s, 'chess');
   if(s.game==='backgammon') return renderBackgammon(mount, s);
+  if(s.game==='durak') return renderDurak(mount, s);
 }
 
 /* ===== Sea battle ===== */
@@ -583,6 +585,125 @@ function renderBackgammon(mount, s){
   fillQuad($('bgTR'), layout.topRight, true);
   fillQuad($('bgBL'), layout.botLeft, false);
   fillQuad($('bgBR'), layout.botRight, false);
+}
+
+/* ===== Durak ===== */
+const DURAK_RANK = {6:'6',7:'7',8:'8',9:'9',T:'10',J:'В',Q:'Д',K:'К',A:'Т'};
+const DURAK_SUIT = {s:'♠',h:'♥',d:'♦',c:'♣'};
+
+function cardLabel(code){
+  if(!code) return '';
+  return (DURAK_RANK[code[0]]||code[0])+(DURAK_SUIT[code[1]]||code[1]);
+}
+function cardRed(code){ return code && (code[1]==='h'||code[1]==='d'); }
+
+function renderDurak(mount, s){
+  const gs = s.game_state||{};
+  const me = s.you;
+  const opp = me==='p1'?'p2':'p1';
+  const myTurn = s.phase==='playing' && s.turn===me;
+  const legal = gs.legal||[];
+  const canAttack = new Set(legal.filter(a=>a.type==='attack').map(a=>a.card));
+  const canDefend = new Set(legal.filter(a=>a.type==='defend').map(a=>a.card));
+  const canTake = legal.some(a=>a.type==='take');
+  const canPass = legal.some(a=>a.type==='pass');
+  const myHand = (gs.hands && me && gs.hands[me]) || [];
+  const oppCount = (gs.hand_counts && opp && gs.hand_counts[opp]) || 0;
+  const table = gs.table||[];
+  const expectHint = {
+    attack:'Сходи картой',
+    defend:'Отбей или возьми',
+    throw:'Подкинь или скажи «бито»'
+  }[gs.expect]||'';
+
+  mount.innerHTML = `
+    <div class="durak">
+      <div class="durak-meta">
+        <div>Козырь <span class="durak-trump ${cardRed(gs.trump_card)?'red':''}">${cardLabel(gs.trump_card)}</span></div>
+        <div>Колода: <strong>${gs.deck_count||0}</strong></div>
+        <div>Сброс: <strong>${gs.discard||0}</strong></div>
+      </div>
+      <div class="durak-opp">
+        <div class="durak-role">${(s.players[opp]&&s.players[opp].name)||'Соперник'} · ${oppCount} карт
+          ${gs.attacker===opp?' · атака':''}${gs.defender===opp?' · защита':''}</div>
+        <div class="durak-hand opp" id="durakOpp"></div>
+      </div>
+      <div class="durak-table" id="durakTable"></div>
+      <div class="durak-actions" id="durakActions"></div>
+      <div class="durak-me">
+        <div class="durak-role">Ты${gs.attacker===me?' · атака':''}${gs.defender===me?' · защита':''}${myTurn?' · твой ход':''}
+          ${myTurn && expectHint? ' — '+expectHint:''}</div>
+        <div class="durak-hand me" id="durakHand"></div>
+      </div>
+    </div>`;
+
+  const oppBox = $('durakOpp');
+  for(let i=0;i<oppCount;i++){
+    const back = document.createElement('div');
+    back.className = 'dcard back';
+    oppBox.appendChild(back);
+  }
+
+  const tableBox = $('durakTable');
+  if(!table.length){
+    const empty = document.createElement('div');
+    empty.className = 'durak-empty';
+    empty.textContent = 'Стол пуст';
+    tableBox.appendChild(empty);
+  } else {
+    table.forEach(pair=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'dpair';
+      const a = document.createElement('div');
+      a.className = 'dcard'+(cardRed(pair.a)?' red':'');
+      a.textContent = cardLabel(pair.a);
+      wrap.appendChild(a);
+      if(pair.d){
+        const d = document.createElement('div');
+        d.className = 'dcard beat'+(cardRed(pair.d)?' red':'');
+        d.textContent = cardLabel(pair.d);
+        wrap.appendChild(d);
+      } else {
+        const wait = document.createElement('div');
+        wait.className = 'dcard ghost';
+        wait.textContent = '?';
+        wrap.appendChild(wait);
+      }
+      tableBox.appendChild(wrap);
+    });
+  }
+
+  const actBox = $('durakActions');
+  if(canPass){
+    const b = document.createElement('button');
+    b.className = 'btn'; b.type='button'; b.textContent='Бито';
+    b.onclick = ()=>doAction({type:'pass'});
+    actBox.appendChild(b);
+  }
+  if(canTake){
+    const b = document.createElement('button');
+    b.className = 'btn ghost'; b.type='button'; b.textContent='Беру';
+    b.onclick = ()=>doAction({type:'take'});
+    actBox.appendChild(b);
+  }
+
+  const handBox = $('durakHand');
+  myHand.forEach(code=>{
+    if(!code) return;
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'dcard'+(cardRed(code)?' red':'');
+    c.textContent = cardLabel(code);
+    const playable = myTurn && (canAttack.has(code) || canDefend.has(code));
+    if(playable) c.classList.add('playable');
+    else c.disabled = true;
+    c.onclick = ()=>{
+      if(!playable) return;
+      if(canDefend.has(code)) doAction({type:'defend', card:code});
+      else if(canAttack.has(code)) doAction({type:'attack', card:code});
+    };
+    handBox.appendChild(c);
+  });
 }
 
 /* ===== room actions ===== */
