@@ -43,7 +43,8 @@
       <button class="btn danger" id="btnSetupBack">Назад</button>
     </div>
     <div class="row" style="margin-top:8px">
-      <label><span>Твоё имя</span><input id="name" type="text" maxlength="20" value="Капитан" autocomplete="nickname"></label>
+      <label><span id="nameLabel">Твоё имя</span><input id="name" type="text" maxlength="20" value="Игрок 1" autocomplete="nickname"></label>
+      <label id="name2Wrap" class="hidden"><span>Имя второго</span><input id="name2" type="text" maxlength="20" value="Игрок 2" autocomplete="nickname"></label>
     </div>
 
     <div id="seabattleOpts" class="hidden" style="margin-top:14px">
@@ -56,9 +57,11 @@
     </div>
 
     <div class="row" style="margin-top:18px">
-      <button class="btn" id="btnCreate">С человеком</button>
+      <button class="btn" id="btnCreate">По сети</button>
+      <button class="btn" id="btnLocal">Вдвоём здесь</button>
       <button class="btn ghost" id="btnVsAi">С роботом</button>
     </div>
+    <p class="hint" id="localHint" style="text-align:left;margin-top:10px">«Вдвоём здесь» — передаёте одно устройство друг другу.</p>
 
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
     <h2 class="section-title">Есть код друга?</h2>

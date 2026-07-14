@@ -25,8 +25,12 @@ const show = id => screens.forEach(s => $(s).classList.toggle('hidden', s!==id))
 
 let chosenGame = 'seabattle';
 let chosenBoard = 'medium';
-let lastSettings = {game:'seabattle', vsAi:false, name:'Капитан', size:'medium'};
+let lastSettings = {game:'seabattle', vsAi:false, vsLocal:false, name:'Игрок 1', name2:'Игрок 2', size:'medium'};
 let token=null, code=null, state=null, pollTimer=null;
+let tokens = {p1:null, p2:null};
+let vsLocal = false;
+let hotseatSlot = null; // чей сейчас «экран» после подтверждения передачи
+let handoverFor = null;
 
 // seabattle placement
 let SB = {FLEET:PRESETS.medium.fleet.slice(), GRID:10, placed:[], selected:null, horizontal:true};
@@ -45,11 +49,19 @@ function applyTheme(theme){
 applyTheme(currentTheme());
 $('btnTheme').onclick = () => applyTheme(currentTheme()==='light'?'dark':'light');
 
+function setLocalNamesVisible(on){
+  const wrap = $('name2Wrap');
+  if(wrap) wrap.classList.toggle('hidden', !on);
+  const lbl = $('nameLabel');
+  if(lbl) lbl.textContent = on ? 'Имя первого' : 'Твоё имя';
+}
+
 function openSetup(gameId){
   chosenGame = gameId || chosenGame;
   $('setupTitle').textContent = GAMES[chosenGame].title;
   $('seabattleOpts').classList.toggle('hidden', chosenGame!=='seabattle');
   $('setupErr').textContent = '';
+  setLocalNamesVisible(false);
   show('setup');
 }
 
@@ -106,12 +118,79 @@ function startPoll(){
 }
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
-function playerName(el){ return (el.value.trim() || 'Капитан'); }
+function playerName(el){ return (el.value.trim() || 'Игрок 1'); }
 
-function applyState(s){
+function needsPrivacy(game){
+  return game==='seabattle' || game==='durak';
+}
+
+function desiredHotseatSlot(s){
+  if(!s || !s.vs_local) return s && s.you;
+  if(s.phase==='done') return s.you || 'p1';
+  if(s.phase==='placing'){
+    const ready = (s.game_state && s.game_state.ready) || {};
+    if(!ready.p1) return 'p1';
+    if(!ready.p2) return 'p2';
+    return s.turn || 'p1';
+  }
+  if(s.phase==='playing') return s.turn || 'p1';
+  return 'p1';
+}
+
+function slotName(s, slot){
+  return (s.players && s.players[slot] && s.players[slot].name) || (slot==='p1'?'Игрок 1':'Игрок 2');
+}
+
+async function switchToSlot(slot){
+  if(!vsLocal || !tokens[slot]) return;
+  token = tokens[slot];
+  hotseatSlot = slot;
+  picked=null; bgSel={from:null,die:null,dieIdx:null};
+  if(state && state.phase==='placing'){ SB.placed=[]; SB.selected=null; }
+  const data = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+  applyState(data.state, {skipHandover:true});
+}
+
+function renderHandover(s, nextSlot){
+  const mount = $('gameMount');
+  const name = slotName(s, nextSlot);
+  const privateHint = needsPrivacy(s.game)
+    ? 'Пусть второй игрок отвернётся — сейчас откроются твои карты/поле.'
+    : 'Передай устройство и нажми кнопку.';
+  mount.innerHTML = `
+    <div class="handover">
+      <div class="handover-title">Ход: ${name}</div>
+      <p class="hint">${privateHint}</p>
+      <button type="button" class="btn" id="btnHandoverReady">Я за экраном — показать</button>
+    </div>`;
+  $('btnHandoverReady').onclick = ()=>switchToSlot(nextSlot).catch(e=>{
+    $('playErr').textContent = e.message;
+  });
+}
+
+function applyState(s, opts={}){
   state = s;
   lastSettings.game = s.game || lastSettings.game;
   lastSettings.vsAi = !!s.vs_ai;
+  lastSettings.vsLocal = !!s.vs_local;
+  vsLocal = !!s.vs_local;
+
+  if(vsLocal && s.phase!=='lobby' && s.phase!=='done' && !opts.skipHandover){
+    const need = desiredHotseatSlot(s);
+    if(need && hotseatSlot !== need){
+      show('playing');
+      $('playTitle').textContent = s.game_title + ' · вместе';
+      $('playStatus').textContent = s.message || '';
+      $('playErr').textContent = '';
+      if(handoverFor !== need){
+        handoverFor = need;
+        renderHandover(s, need);
+      }
+      return;
+    }
+  }
+  handoverFor = null;
+
   if(s.phase==='lobby'){
     show('lobby');
     $('lobbyGame').textContent = s.game_title;
@@ -120,18 +199,30 @@ function applyState(s){
     $('lobbyYou').textContent = s.your_name ? `Ты: ${s.your_name}` : '';
   } else if(s.phase==='placing' || s.phase==='playing'){
     show('playing');
-    $('playTitle').textContent = s.game_title;
-    $('playStatus').textContent = s.message || '';
+    const localTag = s.vs_local ? ' · вместе' : '';
+    $('playTitle').textContent = s.game_title + localTag;
+    const who = s.vs_local && s.your_name ? `${s.your_name}: ` : '';
+    $('playStatus').textContent = who + (s.message || '');
     renderGame(s);
   } else if(s.phase==='done'){
     show('done');
-    const win = s.winner && s.winner === s.you;
-    if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
-      $('doneStatus').textContent = s.message;
-    } else if(win){
-      $('doneStatus').textContent = s.message || 'Победа!';
+    if(s.vs_local){
+      if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
+        $('doneStatus').textContent = s.message;
+      } else if(s.winner && s.players[s.winner]){
+        $('doneStatus').textContent = s.message || `Победа: ${s.players[s.winner].name}`;
+      } else {
+        $('doneStatus').textContent = s.message || 'Игра окончена';
+      }
     } else {
-      $('doneStatus').textContent = s.message || 'Поражение';
+      const win = s.winner && s.winner === s.you;
+      if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
+        $('doneStatus').textContent = s.message;
+      } else if(win){
+        $('doneStatus').textContent = s.message || 'Победа!';
+      } else {
+        $('doneStatus').textContent = s.message || 'Поражение';
+      }
     }
     stopPoll();
   }
@@ -718,7 +809,9 @@ async function leaveGame(){
 function goHome(msg){
   stopPoll(); LS.clear();
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
+  tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   SB.placed=[]; SB.selected=null;
+  setLocalNamesVisible(false);
   show('home');
   const err = $('homeErr');
   if(err) err.textContent = msg||'';
@@ -726,24 +819,49 @@ function goHome(msg){
   if(se) se.textContent = '';
 }
 
-async function startGame(vsAi){
+async function startGame({vsAi=false, vsLocalMode=false}={}){
   const errEl = $('setupErr') || $('homeErr');
   if(errEl) errEl.textContent='';
   try{
     const name=playerName($('name'));
-    const body={name, game:chosenGame, vs_ai:!!vsAi};
+    const name2 = (($('name2')&&$('name2').value.trim()) || 'Игрок 2').slice(0,20);
+    const body={name, game:chosenGame, vs_ai:!!vsAi, vs_local:!!vsLocalMode};
+    if(vsLocalMode) body.name2 = name2;
     if(chosenGame==='seabattle') body.size=chosenBoard;
-    lastSettings = {game:chosenGame, vsAi:!!vsAi, name, size:chosenBoard};
+    lastSettings = {game:chosenGame, vsAi:!!vsAi, vsLocal:!!vsLocalMode, name, name2, size:chosenBoard};
     const data=await api('/api/room/create',{method:'POST', body:JSON.stringify(body)});
-    token=data.token; code=data.code;
-    LS.set({token,code,name,vs_ai:!!vsAi, game:chosenGame, size:chosenBoard});
+    code=data.code;
+    vsLocal = !!data.vs_local || !!vsLocalMode;
+    if(vsLocal && data.tokens){
+      tokens = {p1:data.tokens.p1, p2:data.tokens.p2};
+      token = tokens.p1;
+      hotseatSlot = null; // покажем экран передачи
+    } else {
+      tokens = {p1:data.token, p2:null};
+      token = data.token;
+      hotseatSlot = data.slot || 'p1';
+    }
+    LS.set({
+      token, code, name, name2, vs_ai:!!vsAi, vs_local:vsLocal,
+      tokens: vsLocal ? tokens : null,
+      game:chosenGame, size:chosenBoard
+    });
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     applyState(data.state); startPoll();
   }catch(e){ if(errEl) errEl.textContent=e.message; }
 }
 
-$('btnVsAi').onclick = ()=>startGame(true);
-$('btnCreate').onclick = ()=>startGame(false);
+$('btnVsAi').onclick = ()=>{ setLocalNamesVisible(false); startGame({vsAi:true}); };
+$('btnCreate').onclick = ()=>{ setLocalNamesVisible(false); startGame({vsAi:false, vsLocalMode:false}); };
+$('btnLocal').onclick = ()=>{
+  if($('name2Wrap') && $('name2Wrap').classList.contains('hidden')){
+    setLocalNamesVisible(true);
+    $('setupErr').textContent = 'Укажи имена игроков и нажми «Вдвоём здесь» ещё раз';
+    return;
+  }
+  $('setupErr').textContent = '';
+  startGame({vsLocalMode:true});
+};
 $('btnSetupBack').onclick = ()=>goHome();
 
 $('btnJoin').onclick = async ()=>{
@@ -756,8 +874,9 @@ $('btnJoin').onclick = async ()=>{
       code:($('joinCode').value||'').replace(/\D/g,'').slice(0,6)
     })});
     token=data.token; code=data.code;
+    tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=data.slot||'p2';
     chosenGame = data.state.game || chosenGame;
-    lastSettings = {game:chosenGame, vsAi:false, name:joinName, size:chosenBoard};
+    lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:'Игрок 2', size:chosenBoard};
     LS.set({token,code,name:joinName, game:chosenGame});
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     applyState(data.state); startPoll();
@@ -768,11 +887,17 @@ $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.repla
 $('btnAgain').onclick=()=>goHome();
 $('btnReplay').onclick = async ()=>{
   chosenGame = lastSettings.game || chosenGame;
-  chosenBoard = lastSettings.size || chosenBoard;
+  chosenBoard = lastSettings.size || lastSettings.size || chosenBoard;
   if($('name') && lastSettings.name) $('name').value = lastSettings.name;
-  // mark size buttons
+  if($('name2') && lastSettings.name2) $('name2').value = lastSettings.name2;
   document.querySelectorAll('.size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
-  await startGame(!!lastSettings.vsAi);
+  if(lastSettings.vsLocal){
+    setLocalNamesVisible(true);
+    await startGame({vsLocalMode:true});
+  } else {
+    setLocalNamesVisible(false);
+    await startGame({vsAi:!!lastSettings.vsAi});
+  }
 };
 
 $('btnExitLobby').onclick=()=>leaveGame();
@@ -780,7 +905,22 @@ $('btnExitPlay').onclick=()=>leaveGame();
 
 (async function resume(){
   const saved=LS.get();
-  if(!saved||!saved.token||!saved.code) return;
+  if(!saved||!saved.code) return;
+  if(saved.vs_local && saved.tokens && saved.tokens.p1 && saved.tokens.p2){
+    tokens = saved.tokens;
+    vsLocal = true;
+    token = saved.token || tokens.p1;
+    code = saved.code;
+    hotseatSlot = null;
+    if(saved.name && $('name')) $('name').value=saved.name;
+    if(saved.name2 && $('name2')) $('name2').value=saved.name2;
+    try{
+      const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+      applyState(data.state); startPoll();
+    }catch{ LS.clear(); }
+    return;
+  }
+  if(!saved.token) return;
   token=saved.token; code=saved.code;
   if(saved.name && $('name')) $('name').value=saved.name;
   try{

@@ -365,6 +365,19 @@ html[data-theme="light"] .durak-table{background:rgba(15,39,64,.05)}
 .durak-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0}
 .durak-me{margin-top:6px}
 .durak-opp{margin-bottom:4px}
+
+/* hotseat handover */
+.handover{
+  text-align:center;padding:36px 16px;margin:12px auto;max-width:420px;
+  border:1px dashed var(--line);border-radius:16px;background:rgba(0,0,0,.12);
+}
+html[data-theme="light"] .handover{background:rgba(15,39,64,.05)}
+.handover-title{
+  font-family:'Space Grotesk',sans-serif;font-size:clamp(1.4rem,4vw,1.9rem);
+  font-weight:700;margin-bottom:10px;color:var(--text);
+}
+.handover .btn{margin-top:16px}
+
 @media(max-width:560px){
   .bg-inner{grid-template-columns:1fr 26px 1fr 32px;min-height:300px}
   .bg-point{min-height:120px}

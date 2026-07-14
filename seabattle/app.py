@@ -86,6 +86,7 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "you": viewer,
         "your_name": room["players"][viewer]["name"] if viewer and room["players"].get(viewer) else None,
         "vs_ai": bool(room.get("vs_ai")),
+        "vs_local": bool(room.get("vs_local")),
         "game_state": game_view,
     }
 
@@ -153,11 +154,21 @@ def create_room():
     if game_id not in GAMES:
         return jsonify({"ok": False, "error": "Выбери игру"}), 400
     mod = GAMES[game_id]["module"]
-    name = normalize_name(data.get("name"))
+    name = normalize_name(data.get("name"), "Игрок 1")
+    name2 = normalize_name(data.get("name2"), "Игрок 2")
     vs_ai = bool(data.get("vs_ai"))
+    vs_local = bool(data.get("vs_local"))
+    if vs_ai and vs_local:
+        return jsonify({"ok": False, "error": "Выбери один режим"}), 400
     code = new_code()
     token = secrets.token_hex(16)
     options = {"size": data.get("size")} if game_id == "seabattle" else {}
+    if vs_local:
+        msg = "Игра вдвоём на одном устройстве"
+    elif vs_ai:
+        msg = "Игра с компьютером"
+    else:
+        msg = "Ждём второго игрока…"
     room = {
         "code": code,
         "game": game_id,
@@ -165,8 +176,9 @@ def create_room():
         "created": time.time(),
         "turn": None,
         "winner": None,
-        "message": "Ждём второго игрока…" if not vs_ai else "Игра с компьютером",
+        "message": msg,
         "vs_ai": vs_ai,
+        "vs_local": vs_local,
         "ai_slot": "p2" if vs_ai else None,
         "players": {
             "p1": {"token": token, "name": name, "ai": False},
@@ -174,6 +186,8 @@ def create_room():
         },
         "state": mod.init_state(options),
     }
+
+    tokens_out = {"p1": token, "p2": None}
 
     if vs_ai:
         room["players"]["p2"] = {
@@ -183,9 +197,27 @@ def create_room():
         }
         mod.on_both_joined(room)
         run_ai_turns(room)
+    elif vs_local:
+        token2 = secrets.token_hex(16)
+        room["players"]["p2"] = {
+            "token": token2,
+            "name": name2,
+            "ai": False,
+        }
+        tokens_out["p2"] = token2
+        mod.on_both_joined(room)
 
     save_room(code, room)
-    return jsonify({"ok": True, "code": code, "token": token, "slot": "p1", "state": public_state(room, "p1")})
+    payload = {
+        "ok": True,
+        "code": code,
+        "token": token,
+        "slot": "p1",
+        "vs_local": vs_local,
+        "tokens": tokens_out,
+        "state": public_state(room, "p1"),
+    }
+    return jsonify(payload)
 
 
 @app.post("/api/room/join")
@@ -200,6 +232,8 @@ def join_room():
         return jsonify({"ok": False, "error": "Комната не найдена"}), 404
     if room.get("vs_ai"):
         return jsonify({"ok": False, "error": "Это партия с компьютером"}), 409
+    if room.get("vs_local"):
+        return jsonify({"ok": False, "error": "Это локальная партия на одном устройстве"}), 409
     if room["players"]["p2"] is not None:
         return jsonify({"ok": False, "error": "Комната уже заполнена"}), 409
     if room["phase"] != "lobby":
@@ -272,7 +306,7 @@ def leave_room(code: str):
     opp_slot = opponent(slot)
     opp = room["players"].get(opp_slot)
 
-    if room["phase"] == "lobby" or room.get("vs_ai"):
+    if room["phase"] == "lobby" or room.get("vs_ai") or room.get("vs_local"):
         delete_room(code)
         return jsonify({"ok": True, "left": True})
 
