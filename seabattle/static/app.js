@@ -121,8 +121,8 @@ function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } 
 function playerName(el){ return (el.value.trim() || 'Игрок 1'); }
 
 function needsPrivacy(game){
-  // экран «я за экраном» только в морском бое (скрытое поле)
-  return game==='seabattle';
+  // экран «я за экраном» — морской бой и карты (скрытая рука)
+  return game==='seabattle' || game==='durak';
 }
 
 function desiredHotseatSlot(s){
@@ -155,10 +155,13 @@ async function switchToSlot(slot){
 function renderHandover(s, nextSlot){
   const mount = $('gameMount');
   const name = slotName(s, nextSlot);
+  const hint = s.game==='durak'
+    ? 'Пусть второй игрок отвернётся — сейчас откроются твои карты.'
+    : 'Пусть второй игрок отвернётся — сейчас откроется твоё поле с кораблями.';
   mount.innerHTML = `
     <div class="handover">
       <div class="handover-title">Ход: ${name}</div>
-      <p class="hint">Пусть второй игрок отвернётся — сейчас откроется твоё поле с кораблями.</p>
+      <p class="hint">${hint}</p>
       <button type="button" class="btn" id="btnHandoverReady">Я за экраном — показать</button>
     </div>`;
   $('btnHandoverReady').onclick = ()=>switchToSlot(nextSlot).catch(e=>{
@@ -792,8 +795,8 @@ function renderDurak(mount, s){
     c.className = 'dcard'+(cardRed(code)?' red':'');
     c.textContent = cardLabel(code);
     const playable = myTurn && (canAttack.has(code) || canDefend.has(code));
-    if(playable) c.classList.add('playable');
-    else c.disabled = true;
+    if(!playable) c.disabled = true;
+    else c.style.cursor = 'pointer';
     c.onclick = ()=>{
       if(!playable) return;
       if(canDefend.has(code)) doAction({type:'defend', card:code});

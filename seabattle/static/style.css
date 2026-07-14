@@ -356,11 +356,6 @@ html[data-theme="light"] .durak-table{background:rgba(15,39,64,.05)}
     repeating-linear-gradient(45deg,#1d4f6e 0 6px,#163e57 6px 12px);
   border-color:#0b3a52;color:transparent;
 }
-.dcard.playable{
-  cursor:pointer;outline:2px solid var(--accent);outline-offset:2px;
-  transform:translateY(-6px);transition:transform .12s ease;
-}
-.dcard.playable:hover{transform:translateY(-10px)}
 .dcard:disabled{opacity:.92;cursor:default}
 .durak-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0}
 .durak-me{margin-top:6px}
