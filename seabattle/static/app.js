@@ -306,46 +306,81 @@ function renderTTT(mount, s){
 }
 
 /* ===== Checkers / Chess ===== */
-const CHK = {1:'⚪',2:'⬜',[-1]:'⚫',[-2]:'⬛'};
-const CHESS = {
-  K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',
-  k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'
-};
+const CHESS_GLYPH = {K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟'};
+
+function flipNeeded(s){
+  // У p2 свои фигуры снизу: переворачиваем доску
+  return s.you === 'p2';
+}
+function toDisplay(s, r, c){
+  if(!flipNeeded(s)) return [r,c];
+  return [7-r, 7-c];
+}
+function toServer(s, r, c){
+  if(!flipNeeded(s)) return [r,c];
+  return [7-r, 7-c];
+}
 
 function renderBoardGame(mount, s, kind){
   const board = (s.game_state&&s.game_state.board)||[];
   const myTurn = s.turn===s.you && s.phase==='playing';
-  mount.innerHTML = `<div class="sq-board" id="sqBoard"></div>`;
+  const flip = flipNeeded(s);
+  mount.innerHTML = `<div class="hint" style="margin-bottom:6px">Ты ходишь снизу вверх</div><div class="sq-board" id="sqBoard"></div>`;
   const box=$('sqBoard');
-  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+  // draw display rows top->bottom
+  for(let dr=0; dr<8; dr++) for(let dc=0; dc<8; dc++){
+    const sr = flip ? 7-dr : dr;
+    const sc = flip ? 7-dc : dc;
     const sq=document.createElement('div');
-    const dark=(r+c)%2===1;
+    const dark=(sr+sc)%2===1;
     sq.className='sq '+(dark?'dark':'light');
-    if(picked && picked.r===r && picked.c===c) sq.classList.add('sel');
-    const cell = board[r] ? board[r][c] : null;
+    if(picked && picked.r===sr && picked.c===sc) sq.classList.add('sel');
+    const cell = board[sr] ? board[sr][sc] : null;
     if(kind==='checkers'){
-      if(cell) sq.textContent = CHK[cell] || '';
-    } else {
-      if(cell) sq.textContent = CHESS[cell] || cell;
-      if(cell && cell===cell.toUpperCase()) sq.classList.add('piece-w');
-      if(cell && cell===cell.toLowerCase()) sq.classList.add('piece-b');
+      if(cell){
+        const el=document.createElement('div');
+        const isWhite = cell>0;
+        el.className='chk-piece '+(isWhite?'white':'black')+(Math.abs(cell)===2?' king':'');
+        sq.appendChild(el);
+      }
+    } else if(cell){
+      const el=document.createElement('span');
+      const isWhite = cell === cell.toUpperCase();
+      el.className='chess-piece '+(isWhite?'white':'black');
+      el.textContent = CHESS_GLYPH[cell.toUpperCase()] || cell;
+      sq.appendChild(el);
     }
     sq.onclick = ()=>{
       if(!myTurn) return;
       if(!picked){
-        picked={r,c};
+        picked={r:sr,c:sc};
         renderBoardGame(mount, s, kind);
         return;
       }
-      if(picked.r===r && picked.c===c){ picked=null; renderBoardGame(mount, s, kind); return; }
+      if(picked.r===sr && picked.c===sc){ picked=null; renderBoardGame(mount, s, kind); return; }
       const from=picked; picked=null;
-      doAction({from_r:from.r, from_c:from.c, to_r:r, to_c:c});
+      doAction({from_r:from.r, from_c:from.c, to_r:sr, to_c:sc});
     };
     box.appendChild(sq);
   }
 }
 
 /* ===== Backgammon ===== */
+function bgPointOrder(s){
+  // Ходим снизу вверх: дом игрока внизу экрана.
+  // p1 home = 18..23 bottom-right; show bottom row as advancing toward home.
+  // p2 home = 0..5; flip so their direction visually goes up.
+  const top = [12,13,14,15,16,17,11,10,9,8,7,6];
+  const bot = [18,19,20,21,22,23,5,4,3,2,1,0];
+  if(s.you === 'p2'){
+    return {
+      top: top.map(i => 23-i),
+      bot: bot.map(i => 23-i),
+    };
+  }
+  return {top, bot};
+}
+
 function renderBackgammon(mount, s){
   const gs = s.game_state||{};
   const board = gs.board||Array(24).fill(0);
@@ -354,8 +389,10 @@ function renderBackgammon(mount, s){
   const dice = gs.dice||[];
   const myTurn = s.turn===s.you && s.phase==='playing';
   const opp = s.you==='p1'?'p2':'p1';
+  const order = bgPointOrder(s);
 
   mount.innerHTML = `
+    <div class="hint" style="margin-bottom:6px">Ты идёшь снизу вверх · дом внизу</div>
     <div class="meta-line">
       <span>Бар: ты ${bar[s.you]||0} / враг ${bar[opp]||0}</span>
       <span>Вынесено: ты ${off[s.you]||0}/15 · враг ${off[opp]||0}/15</span>
@@ -366,8 +403,9 @@ function renderBackgammon(mount, s){
       <button class="btn ghost" id="bgOff">Вынести</button>
     </div>
     <div class="dice" id="bgDice"></div>
-    <div class="bg-half" style="grid-template-columns:repeat(12,minmax(0,1fr));margin-top:8px" id="bgAll"></div>
-    <p class="hint" style="margin-top:10px">Выбери кость → пункт «откуда» → пункт «куда» (или «Вынести» / «Бар»)</p>`;
+    <div class="bg-half" style="grid-template-columns:repeat(12,minmax(0,1fr));margin-top:8px" id="bgTop"></div>
+    <div class="bg-half" style="grid-template-columns:repeat(12,minmax(0,1fr));margin-top:8px" id="bgBot"></div>
+    <p class="hint" style="margin-top:10px">Кость → пункт откуда → пункт куда</p>`;
 
   const rollBtn=$('bgRoll');
   rollBtn.disabled = !myTurn || (gs.rolled && dice.length>0);
@@ -396,34 +434,38 @@ function renderBackgammon(mount, s){
     diceBox.appendChild(mark);
   }
 
-  const all=$('bgAll');
-  for(let i=0;i<24;i++){
-    const p=document.createElement('div');
-    p.className='bg-point'+(bgSel.from===i?' sel':'');
-    const v=board[i]||0;
-    const count=Math.abs(v);
-    const who = v>0?'p1':(v<0?'p2':null);
-    const label=document.createElement('small'); label.textContent=String(i+1); label.style.opacity='.55'; p.appendChild(label);
-    for(let n=0;n<Math.min(count,5);n++){
-      const c=document.createElement('div'); c.className='checker '+(who||''); p.appendChild(c);
-    }
-    if(count>5){ const m=document.createElement('small'); m.textContent='+'+(count-5); p.appendChild(m); }
-    p.onclick=()=>{
-      if(!myTurn) return;
-      if(bgSel.from==='bar'){
-        if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
-        const die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
-        doAction({type:'move', from:'bar', to:i, die});
-        return;
+  function fill(el, points){
+    el.innerHTML='';
+    points.forEach(i=>{
+      const p=document.createElement('div');
+      p.className='bg-point'+(bgSel.from===i?' sel':'');
+      const v=board[i]||0;
+      const count=Math.abs(v);
+      const who = v>0?'p1':(v<0?'p2':null);
+      const label=document.createElement('small'); label.textContent=String(i+1); label.style.opacity='.55'; p.appendChild(label);
+      for(let n=0;n<Math.min(count,5);n++){
+        const c=document.createElement('div'); c.className='checker '+(who||''); p.appendChild(c);
       }
-      if(bgSel.from==null){ bgSel.from=i; renderBackgammon(mount,s); return; }
-      if(bgSel.from===i){ bgSel.from=null; renderBackgammon(mount,s); return; }
-      if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
-      const from=bgSel.from, die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
-      doAction({type:'move', from, to:i, die});
-    };
-    all.appendChild(p);
+      if(count>5){ const m=document.createElement('small'); m.textContent='+'+(count-5); p.appendChild(m); }
+      p.onclick=()=>{
+        if(!myTurn) return;
+        if(bgSel.from==='bar'){
+          if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
+          const die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
+          doAction({type:'move', from:'bar', to:i, die});
+          return;
+        }
+        if(bgSel.from==null){ bgSel.from=i; renderBackgammon(mount,s); return; }
+        if(bgSel.from===i){ bgSel.from=null; renderBackgammon(mount,s); return; }
+        if(bgSel.die==null){ $('playErr').textContent='Выбери кость'; return; }
+        const from=bgSel.from, die=bgSel.die; bgSel={from:null,die:null,dieIdx:null};
+        doAction({type:'move', from, to:i, die});
+      };
+      el.appendChild(p);
+    });
   }
+  fill($('bgTop'), order.top);
+  fill($('bgBot'), order.bot);
 }
 
 /* ===== room actions ===== */
@@ -443,19 +485,22 @@ function goHome(msg){
   $('homeErr').textContent = msg||'';
 }
 
-$('btnCreate').onclick = async ()=>{
+async function startGame(vsAi){
   $('homeErr').textContent='';
   try{
     const name=playerName($('name'));
-    const body={name, game:chosenGame};
+    const body={name, game:chosenGame, vs_ai:!!vsAi};
     if(chosenGame==='seabattle') body.size=chosenBoard;
     const data=await api('/api/room/create',{method:'POST', body:JSON.stringify(body)});
     token=data.token; code=data.code;
-    LS.set({token,code,name});
+    LS.set({token,code,name,vs_ai:!!vsAi});
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     applyState(data.state); startPoll();
   }catch(e){ $('homeErr').textContent=e.message; }
-};
+}
+
+$('btnVsAi').onclick = ()=>startGame(true);
+$('btnCreate').onclick = ()=>startGame(false);
 
 $('btnJoin').onclick = async ()=>{
   $('homeErr').textContent='';

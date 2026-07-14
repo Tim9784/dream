@@ -239,3 +239,71 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "dice": st["dice"],
         "rolled": st["rolled"],
     }
+
+
+def _pip(board: list[int], bar: dict, slot: str) -> int:
+    total = bar.get(slot, 0) * 25
+    for i, v in enumerate(board):
+        n = _count_on_point(v, slot)
+        if not n:
+            continue
+        if slot == "p1":
+            total += n * (24 - i)
+        else:
+            total += n * (i + 1)
+    return total
+
+
+def _score_position(st: dict[str, Any], slot: str) -> float:
+    board = st["board"]
+    bar = st["bar"]
+    off = st["off"]
+    opp = "p2" if slot == "p1" else "p1"
+    # lower pip better; hitting opponent bar good; own bar bad; off good
+    score = 0.0
+    score -= _pip(board, bar, slot) * 1.0
+    score += _pip(board, bar, opp) * 0.9
+    score += off[slot] * 40
+    score -= off[opp] * 35
+    score -= bar[slot] * 28
+    score += bar[opp] * 22
+    # blot penalty (single checkers)
+    for i, v in enumerate(board):
+        if _count_on_point(v, slot) == 1:
+            score -= 3
+        if _count_on_point(v, opp) == 1:
+            score += 1.5
+    return score
+
+
+def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
+    st = room["state"]
+    if not st.get("rolled") or not st.get("dice"):
+        return {"type": "roll"}
+
+    dice = list(st["dice"])
+    best = None
+    best_score = -10**18
+    # try each die + each legal from/to
+    for die in set(dice):
+        for frm, to in _legal_from(room, slot, die):
+            # simulate
+            import copy
+            sim = {
+                "board": [x for x in st["board"]],
+                "bar": dict(st["bar"]),
+                "off": dict(st["off"]),
+                "dice": list(dice),
+                "rolled": True,
+            }
+            _apply_one(sim, slot, frm, to)
+            score = _score_position(sim, slot)
+            # prefer hitting
+            if isinstance(to, int) and _point_owner(st["board"][to]) and _point_owner(st["board"][to]) != slot and abs(st["board"][to]) == 1:
+                score += 15
+            if to == "off":
+                score += 20
+            if score > best_score:
+                best_score = score
+                best = {"type": "move", "die": die, "from": frm, "to": to}
+    return best

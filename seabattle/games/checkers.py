@@ -170,3 +170,96 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
+
+
+def _clone_board(board: list[list[int]]) -> list[list[int]]:
+    return [row[:] for row in board]
+
+
+def _apply_move_sim(board: list[list[int]], move: tuple, side: int) -> tuple[list[list[int]], bool]:
+    """Apply one move; return (board, continues_capture)."""
+    fr, fc, tr, tc = move[0], move[1], move[2], move[3]
+    nb = _clone_board(board)
+    piece = nb[fr][fc]
+    nb[tr][tc] = _promote(piece, tr)
+    nb[fr][fc] = 0
+    continues = False
+    if len(move) == 6:
+        cr, cc = move[4], move[5]
+        nb[cr][cc] = 0
+        continues = bool(_captures(nb, tr, tc))
+    return nb, continues
+
+
+def _moves_for_side(board: list[list[int]], side: int) -> list[tuple]:
+    caps = _all_captures(board, side)
+    if caps:
+        return caps
+    out = []
+    for r in range(8):
+        for c in range(8):
+            if _side(board[r][c]) == side:
+                for tr, tc in _simple_moves(board, r, c):
+                    out.append((r, c, tr, tc))
+    return out
+
+
+def _eval_chk(board: list[list[int]], side: int) -> int:
+    score = 0
+    for r in range(8):
+        for c in range(8):
+            p = board[r][c]
+            if not p:
+                continue
+            s = _side(p)
+            val = 3 if abs(p) == 2 else 1
+            # progress toward promotion
+            if p == 1:
+                val += (7 - r) * 0.05
+            elif p == -1:
+                val += r * 0.05
+            score += val if s == side else -val
+    return int(score * 100)
+
+
+def _negamax_chk(board: list[list[int]], side: int, depth: int, alpha: int, beta: int) -> int:
+    if depth == 0:
+        return _eval_chk(board, side)
+    moves = _moves_for_side(board, side)
+    if not moves:
+        return -100000
+    best = -10**9
+    for m in moves:
+        nb, cont = _apply_move_sim(board, m, side)
+        if cont:
+            # same side continues
+            val = _negamax_chk(nb, side, depth, alpha, beta)
+        else:
+            val = -_negamax_chk(nb, -side, depth - 1, -beta, -alpha)
+        if val > best:
+            best = val
+        alpha = max(alpha, best)
+        if alpha >= beta:
+            break
+    return best
+
+
+def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
+    board = room["state"]["board"]
+    side = 1 if slot == "p1" else -1
+    moves = _moves_for_side(board, side)
+    if not moves:
+        return None
+    depth = 4
+    best = moves[0]
+    best_score = -10**9
+    for m in moves:
+        nb, cont = _apply_move_sim(board, m, side)
+        if cont:
+            score = _negamax_chk(nb, side, depth, -10**9, 10**9)
+        else:
+            score = -_negamax_chk(nb, -side, depth - 1, -10**9, 10**9)
+        if score > best_score:
+            best_score = score
+            best = m
+    return {"from_r": best[0], "from_c": best[1], "to_r": best[2], "to_c": best[3]}

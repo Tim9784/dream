@@ -141,15 +141,39 @@ html[data-theme="light"] .ship-chip .seg{background:#1f5f78}
   border:2px solid var(--line);border-radius:10px;overflow:hidden;
 }
 .sq{
-  aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(1.2rem,4vw,1.8rem);
-  cursor:pointer;user-select:none;
+  aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  font-size:clamp(1.35rem,4.6vw,2rem);cursor:pointer;user-select:none;position:relative;
 }
-.sq.light{background:var(--board-light);color:#2b2118}
-.sq.dark{background:var(--board-dark);color:#fff8ee}
+.sq.light{background:var(--board-light)}
+.sq.dark{background:var(--board-dark)}
 .sq.sel{outline:3px solid var(--accent);outline-offset:-3px}
 .sq.hint{box-shadow:inset 0 0 0 4px rgba(56,189,248,.55)}
-.piece-w{filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
-.piece-b{filter:drop-shadow(0 1px 1px rgba(0,0,0,.45))}
+.chess-piece{
+  font-family:'Segoe UI Symbol','DejaVu Sans',serif;
+  line-height:1;display:inline-block;
+}
+.chess-piece.white{
+  color:#f8fafc;
+  -webkit-text-stroke:1.1px #1e293b;
+  text-shadow:0 1px 0 #0f172a, 0 2px 4px rgba(0,0,0,.35);
+}
+.chess-piece.black{
+  color:#0b1220;
+  -webkit-text-stroke:1px #e2e8f0;
+  text-shadow:0 1px 0 rgba(255,255,255,.35), 0 2px 4px rgba(0,0,0,.4);
+}
+.chk-piece{
+  width:68%;height:68%;border-radius:50%;
+  box-shadow:inset 0 -3px 0 rgba(0,0,0,.2), 0 2px 4px rgba(0,0,0,.25);
+}
+.chk-piece.white{background:radial-gradient(circle at 35% 30%,#ffffff,#dbe4ee 70%,#94a3b8)}
+.chk-piece.black{background:radial-gradient(circle at 35% 30%,#475569,#0f172a 72%,#020617)}
+.chk-piece.king::after{
+  content:"♛";position:absolute;font-size:.55em;left:50%;top:50%;transform:translate(-50%,-54%);
+  color:inherit;opacity:.9;
+}
+.chk-piece.white.king{color:#334155}
+.chk-piece.black.king{color:#e2e8f0}
 
 /* backgammon */
 .bg-wrap{display:grid;grid-template-columns:1fr 48px 1fr;gap:8px;align-items:stretch}

@@ -190,3 +190,105 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         if room["players"].get(opp):
             out["incoming"] = st["shots"][opp]
     return out
+
+
+def _random_fleet(fleet: list[int], grid: int) -> list[dict[str, Any]]:
+    import random as _rnd
+    for _attempt in range(200):
+        placed: list[dict[str, Any]] = []
+        occupied: set[tuple[int, int]] = set()
+
+        def ok(ship: dict[str, Any]) -> bool:
+            cells = []
+            for i in range(ship["size"]):
+                cx = ship["x"] + i if ship["horizontal"] else ship["x"]
+                cy = ship["y"] if ship["horizontal"] else ship["y"] + i
+                if not (0 <= cx < grid and 0 <= cy < grid):
+                    return False
+                cells.append((cx, cy))
+            for cx, cy in cells:
+                if (cx, cy) in occupied:
+                    return False
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        nx, ny = cx + dx, cy + dy
+                        if (nx, ny) in occupied and (nx, ny) not in cells:
+                            return False
+            return True
+
+        success = True
+        for size in sorted(fleet, reverse=True):
+            found = False
+            for _ in range(400):
+                horiz = _rnd.random() > 0.5
+                x = _rnd.randint(0, grid - size if horiz else grid - 1)
+                y = _rnd.randint(0, grid - 1 if horiz else grid - size)
+                ship = {"size": size, "x": x, "y": y, "horizontal": horiz}
+                if ok(ship):
+                    cells = []
+                    for i in range(size):
+                        cx = x + i if horiz else x
+                        cy = y if horiz else y + i
+                        cells.append((cx, cy))
+                        occupied.add((cx, cy))
+                    placed.append(ship)
+                    found = True
+                    break
+            if not found:
+                success = False
+                break
+        if success and len(placed) == len(fleet):
+            return placed
+    raise RuntimeError("AI fleet fail")
+
+
+def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
+    st = room["state"]
+    grid = int(st["grid"])
+    if room["phase"] == "placing" or st.get("phase") == "placing":
+        if st["ready"].get(slot):
+            return None
+        ships = _random_fleet(list(st["fleet"]), grid)
+        return {"type": "place", "ships": ships}
+
+    # battle shot — hunt/target + parity
+    shots = st["shots"][slot]
+    opp = "p2" if slot == "p1" else "p1"
+    hits = [(x, y) for y in range(grid) for x in range(grid) if shots[y][x] == 1]
+    # unfinished hits: adjacent unknown
+    targets = []
+    for x, y in hits:
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < grid and 0 <= ny < grid and shots[ny][nx] == 0:
+                targets.append((nx, ny))
+    if targets:
+        # prefer continuing a line of hits
+        scored = []
+        for nx, ny in targets:
+            score = 0
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                px, py = nx + dx, ny + dy
+                if 0 <= px < grid and 0 <= py < grid and shots[py][px] == 1:
+                    score += 3
+            scored.append((score, nx, ny))
+        scored.sort(reverse=True)
+        return {"type": "shot", "x": scored[0][1], "y": scored[0][2]}
+
+    # probability heatmap for remaining ships
+    fleet = list(st["fleet"])
+    # approximate remaining length total by uncounted hits
+    candidates = []
+    for y in range(grid):
+        for x in range(grid):
+            if shots[y][x] != 0:
+                continue
+            # checkerboard parity + center bias
+            score = 1 + (1 if (x + y) % 2 == 0 else 0)
+            score += (grid / 2 - abs(x - (grid - 1) / 2)) * 0.05
+            score += (grid / 2 - abs(y - (grid - 1) / 2)) * 0.05
+            candidates.append((score, x, y))
+    candidates.sort(reverse=True)
+    if not candidates:
+        return None
+    return {"type": "shot", "x": candidates[0][1], "y": candidates[0][2]}

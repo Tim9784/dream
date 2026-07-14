@@ -249,3 +249,157 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
+
+
+VALUES = {"P": 100, "N": 320, "B": 330, "R": 500, "Q": 900, "K": 20000}
+
+# simplified piece-square tables (white perspective; flip for black)
+PST = {
+    "P": [
+        0,0,0,0,0,0,0,0,
+        50,50,50,50,50,50,50,50,
+        10,10,20,30,30,20,10,10,
+        5,5,10,25,25,10,5,5,
+        0,0,0,20,20,0,0,0,
+        5,-5,-10,0,0,-10,-5,5,
+        5,10,10,-20,-20,10,10,5,
+        0,0,0,0,0,0,0,0,
+    ],
+    "N": [
+        -50,-40,-30,-30,-30,-30,-40,-50,
+        -40,-20,0,0,0,0,-20,-40,
+        -30,0,10,15,15,10,0,-30,
+        -30,5,15,20,20,15,5,-30,
+        -30,0,15,20,20,15,0,-30,
+        -30,5,10,15,15,10,5,-30,
+        -40,-20,0,5,5,0,-20,-40,
+        -50,-40,-30,-30,-30,-30,-40,-50,
+    ],
+    "B": [
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,0,0,0,0,0,0,-10,
+        -10,0,10,10,10,10,0,-10,
+        -10,5,5,10,10,5,5,-10,
+        -10,0,10,10,10,10,0,-10,
+        -10,10,10,10,10,10,10,-10,
+        -10,5,0,0,0,0,5,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20,
+    ],
+    "R": [
+        0,0,0,0,0,0,0,0,
+        5,10,10,10,10,10,10,5,
+        -5,0,0,0,0,0,0,-5,
+        -5,0,0,0,0,0,0,-5,
+        -5,0,0,0,0,0,0,-5,
+        -5,0,0,0,0,0,0,-5,
+        -5,0,0,0,0,0,0,-5,
+        0,0,0,5,5,0,0,0,
+    ],
+    "Q": [
+        -20,-10,-10,-5,-5,-10,-10,-20,
+        -10,0,0,0,0,0,0,-10,
+        -10,0,5,5,5,5,0,-10,
+        -5,0,5,5,5,5,0,-5,
+        0,0,5,5,5,5,0,-5,
+        -10,5,5,5,5,5,0,-10,
+        -10,0,5,0,0,0,0,-10,
+        -20,-10,-10,-5,-5,-10,-10,-20,
+    ],
+    "K": [
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -20,-30,-30,-40,-40,-30,-30,-20,
+        -10,-20,-20,-20,-20,-20,-20,-10,
+        20,20,0,0,0,0,20,20,
+        20,30,10,0,0,10,30,20,
+    ],
+}
+
+
+def _eval_board(board: list[list[str | None]], white_perspective: bool) -> int:
+    score = 0
+    for r in range(8):
+        for c in range(8):
+            p = board[r][c]
+            if not p:
+                continue
+            kind = p.upper()
+            val = VALUES.get(kind, 0)
+            idx = r * 8 + c
+            pst = PST.get(kind, [0] * 64)
+            if p.isupper():
+                score += val + pst[idx]
+            else:
+                score -= val + pst[(7 - r) * 8 + c]
+    return score if white_perspective else -score
+
+
+def _all_moves(board: list[list[str | None]], white: bool) -> list[tuple[int, int, int, int]]:
+    moves = []
+    for r in range(8):
+        for c in range(8):
+            p = board[r][c]
+            if p and p.isupper() == white:
+                for tr, tc in _legal_moves(board, r, c):
+                    moves.append((r, c, tr, tc))
+    # capture-ish ordering
+    def key(m):
+        fr, fc, tr, tc = m
+        victim = board[tr][tc]
+        return -(VALUES.get(victim.upper(), 0) if victim else 0)
+    moves.sort(key=key)
+    return moves
+
+
+def _negamax(board: list[list[str | None]], depth: int, alpha: int, beta: int, white: bool) -> int:
+    if depth == 0:
+        return _eval_board(board, True) if white else -_eval_board(board, True)
+    moves = _all_moves(board, white)
+    if not moves:
+        if _in_check(board, white):
+            return -100000 + (4 - depth)
+        return 0
+    best = -10**9
+    for fr, fc, tr, tc in moves:
+        nb = _clone(board)
+        piece = nb[fr][fc]
+        nb[tr][tc] = piece
+        nb[fr][fc] = None
+        if piece and piece.upper() == "P" and tr in (0, 7):
+            nb[tr][tc] = "Q" if white else "q"
+        val = -_negamax(nb, depth - 1, -beta, -alpha, not white)
+        if val > best:
+            best = val
+        if best > alpha:
+            alpha = best
+        if alpha >= beta:
+            break
+    return best
+
+
+def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
+    white = slot == "p1"
+    board = room["state"]["board"]
+    moves = _all_moves(board, white)
+    if not moves:
+        return None
+    depth = 3 if len(moves) < 35 else 2
+    best_move = moves[0]
+    best_score = -10**9
+    for fr, fc, tr, tc in moves:
+        nb = _clone(board)
+        piece = nb[fr][fc]
+        nb[tr][tc] = piece
+        nb[fr][fc] = None
+        if piece and piece.upper() == "P" and tr in (0, 7):
+            nb[tr][tc] = "Q" if white else "q"
+        score = -_negamax(nb, depth - 1, -10**9, 10**9, not white)
+        # tiny preference to central advances
+        score += (3 - abs(3.5 - tc)) * 0.1
+        if score > best_score:
+            best_score = score
+            best_move = (fr, fc, tr, tc)
+    fr, fc, tr, tc = best_move
+    return {"from_r": fr, "from_c": fc, "to_r": tr, "to_c": tc}

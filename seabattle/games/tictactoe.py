@@ -65,3 +65,42 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
+
+
+def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
+    board = room["state"]["board"][:]
+    me = 1 if slot == "p1" else 2
+    opp = 3 - me
+
+    def winner(b: list[int]) -> int | None:
+        return _winner(b)
+
+    def minimax(b: list[int], turn: int) -> int:
+        w = winner(b)
+        if w == me:
+            return 10
+        if w == opp:
+            return -10
+        if w == 0:
+            return 0
+        scores = []
+        for i in range(9):
+            if b[i]:
+                continue
+            b[i] = turn
+            scores.append(minimax(b, opp if turn == me else me))
+            b[i] = 0
+        if not scores:
+            return 0
+        return max(scores) if turn == me else min(scores)
+
+    best_i, best_s = None, -10**9
+    for i in range(9):
+        if board[i]:
+            continue
+        board[i] = me
+        score = minimax(board, opp)
+        board[i] = 0
+        if score > best_s:
+            best_s, best_i = score, i
+    return {"cell": best_i} if best_i is not None else None
