@@ -3,7 +3,7 @@ const GAMES = {
   tictactoe: {title:'Крестики-нолики', blurb:'Классика 3×3'},
   checkers: {title:'Шашки', blurb:'Русские шашки 8×8'},
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
-  backgammon: {title:'Нарды', blurb:'Классическая доска, кости и вынос'},
+  backgammon: {title:'Нарды', blurb:'Длинные нарды — все с одной головы'},
 };
 
 const PRESETS = {
@@ -448,17 +448,17 @@ function renderBackgammon(mount, s){
   }
 
   mount.innerHTML = `
-    <div class="hint">Классические нарды · дом справа внизу · выбей блот на бар</div>
+    <div class="hint">Длинные нарды · все 15 с головы · чужие пункты закрыты · вынос из дома</div>
     <div class="meta-line">
-      <span>На баре: ты ${bar[me]||0} · соперник ${bar[opp]||0}</span>
+      <span>Правило головы: за ход снимается только одна шашка с головы</span>
       <span>Вынесено: ты ${off[me]||0}/15 · соперник ${off[opp]||0}/15</span>
     </div>
     <div class="bg-board">
       <div class="bg-inner">
         <div class="bg-quad top" id="bgTL"></div>
-        <div class="bg-bar">
-          <div class="bar-slot" id="bgBarOpp" title="Бар соперника"></div>
-          <div class="bar-slot" id="bgBarMe" title="Твой бар"></div>
+        <div class="bg-bar" title="Разделитель доски">
+          <div class="bar-slot" id="bgBarOpp"></div>
+          <div class="bar-slot" id="bgBarMe"></div>
         </div>
         <div class="bg-quad top" id="bgTR"></div>
         <div class="bg-off">
@@ -473,7 +473,7 @@ function renderBackgammon(mount, s){
       <button class="btn" id="bgRoll">Бросить кости</button>
       <div class="dice" id="bgDice"></div>
     </div>
-    <p class="hint" style="margin-top:8px">Кликни свою шашку (или бар), затем зелёную цель. Кость выбирается сама, если одна.</p>`;
+    <p class="hint" style="margin-top:8px">Кликни стопку → затем подсвеченный пункт. Кость подставится сама, если одна.</p>`;
 
   $('bgOffOppN').textContent = String(off[opp]||0);
   $('bgOffMeN').textContent = String(off[me]||0);
@@ -538,12 +538,16 @@ function renderBackgammon(mount, s){
       const v=board[pointIdx]||0;
       const count=Math.abs(v);
       const who = v>0?'p1':(v<0?'p2':null);
+      const myHead = me==='p1'?0:12;
+      if(pointIdx===myHead && count>0 && who===me) p.classList.add('head-glow');
+      if(pointIdx===(me==='p1'?12:0) && count>0 && who===opp) p.classList.add('head-glow');
       const stack=document.createElement('div'); stack.className='stack';
-      const show = Math.min(count, 5);
+      const show = Math.min(count, 8);
       for(let n=0;n<show;n++){
         const c=document.createElement('div'); c.className='checker '+(who||''); stack.appendChild(c);
       }
-      if(count>5){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+count; stack.appendChild(m); }
+      if(count>8){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+count; stack.appendChild(m); }
+      else if(count>1){ const m=document.createElement('div'); m.className='checker-count'; m.textContent=String(count); stack.appendChild(m); }
       p.appendChild(stack);
       p.onclick=()=>{
         if(!myTurn) return;
