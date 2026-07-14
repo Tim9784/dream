@@ -121,7 +121,8 @@ function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } 
 function playerName(el){ return (el.value.trim() || 'Игрок 1'); }
 
 function needsPrivacy(game){
-  return game==='seabattle' || game==='durak';
+  // экран «я за экраном» только в морском бое (скрытое поле)
+  return game==='seabattle';
 }
 
 function desiredHotseatSlot(s){
@@ -154,13 +155,10 @@ async function switchToSlot(slot){
 function renderHandover(s, nextSlot){
   const mount = $('gameMount');
   const name = slotName(s, nextSlot);
-  const privateHint = needsPrivacy(s.game)
-    ? 'Пусть второй игрок отвернётся — сейчас откроются твои карты/поле.'
-    : 'Передай устройство и нажми кнопку.';
   mount.innerHTML = `
     <div class="handover">
       <div class="handover-title">Ход: ${name}</div>
-      <p class="hint">${privateHint}</p>
+      <p class="hint">Пусть второй игрок отвернётся — сейчас откроется твоё поле с кораблями.</p>
       <button type="button" class="btn" id="btnHandoverReady">Я за экраном — показать</button>
     </div>`;
   $('btnHandoverReady').onclick = ()=>switchToSlot(nextSlot).catch(e=>{
@@ -178,13 +176,21 @@ function applyState(s, opts={}){
   if(vsLocal && s.phase!=='lobby' && s.phase!=='done' && !opts.skipHandover){
     const need = desiredHotseatSlot(s);
     if(need && hotseatSlot !== need){
-      show('playing');
-      $('playTitle').textContent = s.game_title + ' · вместе';
-      $('playStatus').textContent = s.message || '';
-      $('playErr').textContent = '';
-      if(handoverFor !== need){
-        handoverFor = need;
-        renderHandover(s, need);
+      if(needsPrivacy(s.game)){
+        show('playing');
+        $('playTitle').textContent = s.game_title + ' · вместе';
+        $('playStatus').textContent = s.message || '';
+        $('playErr').textContent = '';
+        if(handoverFor !== need){
+          handoverFor = need;
+          renderHandover(s, need);
+        }
+        return;
+      }
+      // остальные игры — сразу переключаем активного игрока без оверлея
+      if(handoverFor !== 'auto:'+need){
+        handoverFor = 'auto:'+need;
+        switchToSlot(need).catch(e=>{ $('playErr').textContent = e.message; });
       }
       return;
     }
