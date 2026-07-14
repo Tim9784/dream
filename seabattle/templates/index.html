@@ -17,10 +17,23 @@
     }
     document.documentElement.setAttribute('data-theme', t);
   }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
-  // блок pinch-zoom на iOS
+  // блок pinch + double-tap zoom
   ['gesturestart','gesturechange','gestureend'].forEach(function(ev){
     document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
   });
+  var lastTouchEnd = 0;
+  document.addEventListener('touchend', function(e){
+    var el = e.target;
+    if(el && (el.closest && el.closest('input,textarea'))) return;
+    var now = Date.now();
+    if(now - lastTouchEnd <= 350) e.preventDefault();
+    lastTouchEnd = now;
+  }, {passive:false});
+  document.addEventListener('dblclick', function(e){
+    var el = e.target;
+    if(el && (el.closest && el.closest('input,textarea'))) return;
+    e.preventDefault();
+  }, {passive:false});
 })();
 </script>
 </head>
@@ -29,7 +42,7 @@
   <div class="header-row">
     <div>
       <h1 class="brand">Игровое лобби</h1>
-      <p class="tag">Двойной клик по игре — имя, лобби и режим.</p>
+      <p class="tag">Нажми на игру — имя, лобби и режим.</p>
     </div>
     <button type="button" class="theme-btn" id="btnTheme">Тема</button>
   </div>
@@ -37,7 +50,7 @@
   <section id="home" class="panel">
     <h2 class="section-title">Игры</h2>
     <div class="game-grid" id="gameGrid"></div>
-    <p class="hint">Дважды нажми на карточку, чтобы начать</p>
+    <p class="hint">Нажми на карточку, чтобы начать</p>
     <div class="err" id="homeErr"></div>
   </section>
 

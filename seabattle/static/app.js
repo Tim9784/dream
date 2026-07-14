@@ -73,15 +73,7 @@ function renderGameCards(){
     b.type='button';
     b.className = 'game-card'+(chosenGame===id?' active':'');
     b.innerHTML = `<strong>${meta.title}</strong><small>${meta.blurb}</small>`;
-    b.onclick = ()=>{ chosenGame = id; renderGameCards(); };
-    b.ondblclick = (e)=>{ e.preventDefault(); openSetup(id); };
-    // touch: double-tap
-    let lastTap = 0;
-    b.addEventListener('touchend', (e)=>{
-      const now = Date.now();
-      if(now - lastTap < 350){ e.preventDefault(); openSetup(id); }
-      lastTap = now;
-    }, {passive:false});
+    b.onclick = ()=>{ chosenGame = id; openSetup(id); };
     box.appendChild(b);
   });
 }
