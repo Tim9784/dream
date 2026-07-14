@@ -25,7 +25,7 @@
   <div class="header-row">
     <div>
       <h1 class="brand">Игровое лобби</h1>
-      <p class="tag">Выбери игру, создай комнату и зови друга по коду.</p>
+      <p class="tag">Двойной клик по игре — имя, лобби и режим.</p>
     </div>
     <button type="button" class="theme-btn" id="btnTheme">Тема</button>
   </div>
@@ -33,9 +33,21 @@
   <section id="home" class="panel">
     <h2 class="section-title">Игры</h2>
     <div class="game-grid" id="gameGrid"></div>
+    <p class="hint">Дважды нажми на карточку, чтобы начать</p>
+    <div class="err" id="homeErr"></div>
+  </section>
 
-    <div id="seabattleOpts" class="hidden" style="margin-bottom:14px">
-      <span class="field-label" style="font-size:.9rem">Размер поля (морской бой)</span>
+  <section id="setup" class="panel hidden">
+    <div class="topbar">
+      <strong id="setupTitle">Игра</strong>
+      <button class="btn danger" id="btnSetupBack">Назад</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span>Твоё имя</span><input id="name" type="text" maxlength="20" value="Капитан" autocomplete="nickname"></label>
+    </div>
+
+    <div id="seabattleOpts" class="hidden" style="margin-top:14px">
+      <span class="field-label" style="font-size:.9rem">Размер поля</span>
       <div class="size-pick" id="sizePick">
         <button type="button" class="size-btn" data-size="small"><strong>Маленькое</strong><small>8×8 · 6 кораблей</small></button>
         <button type="button" class="size-btn active" data-size="medium"><strong>Среднее</strong><small>10×10 · 10 кораблей</small></button>
@@ -43,20 +55,18 @@
       </div>
     </div>
 
-    <div class="row">
-      <label><span>Твоё имя</span><input id="name" type="text" maxlength="20" value="Капитан" autocomplete="nickname"></label>
-      <button class="btn" id="btnCreate" style="margin-top:22px">Создать комнату</button>
-      <button class="btn ghost" id="btnVsAi" style="margin-top:22px">Играть с компьютером</button>
+    <div class="row" style="margin-top:18px">
+      <button class="btn" id="btnCreate">С человеком</button>
+      <button class="btn ghost" id="btnVsAi">С роботом</button>
     </div>
 
     <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-    <h2 class="section-title">Войти по коду</h2>
+    <h2 class="section-title">Есть код друга?</h2>
     <div class="row">
-      <label><span>Твоё имя</span><input id="joinName" type="text" maxlength="20" value="Капитан" autocomplete="nickname"></label>
       <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" autocomplete="off"></label>
       <button class="btn ghost" id="btnJoin" style="margin-top:22px">Войти</button>
     </div>
-    <div class="err" id="homeErr"></div>
+    <div class="err" id="setupErr"></div>
   </section>
 
   <section id="lobby" class="panel hidden">
@@ -84,12 +94,11 @@
 
   <section id="done" class="panel hidden">
     <div class="status" id="doneStatus">Игра окончена</div>
-    <div class="row" style="justify-content:center;margin-top:10px">
-      <button class="btn" id="btnAgain">В меню</button>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn" id="btnReplay">Играть заново</button>
+      <button class="btn ghost" id="btnAgain">В меню</button>
     </div>
   </section>
-
-  <p class="footer" id="footerInfo">Двое по сети · общее лобби · выбор из пяти игр</p>
 </div>
 <script src="/static/app.js"></script>
 </body>

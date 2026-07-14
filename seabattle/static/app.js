@@ -19,11 +19,12 @@ const LS = {
 };
 
 const $ = id => document.getElementById(id);
-const screens = ['home','lobby','playing','done'];
+const screens = ['home','setup','lobby','playing','done'];
 const show = id => screens.forEach(s => $(s).classList.toggle('hidden', s!==id));
 
 let chosenGame = 'seabattle';
 let chosenBoard = 'medium';
+let lastSettings = {game:'seabattle', vsAi:false, name:'Капитан', size:'medium'};
 let token=null, code=null, state=null, pollTimer=null;
 
 // seabattle placement
@@ -43,6 +44,14 @@ function applyTheme(theme){
 applyTheme(currentTheme());
 $('btnTheme').onclick = () => applyTheme(currentTheme()==='light'?'dark':'light');
 
+function openSetup(gameId){
+  chosenGame = gameId || chosenGame;
+  $('setupTitle').textContent = GAMES[chosenGame].title;
+  $('seabattleOpts').classList.toggle('hidden', chosenGame!=='seabattle');
+  $('setupErr').textContent = '';
+  show('setup');
+}
+
 function renderGameCards(){
   const box = $('gameGrid');
   box.innerHTML = '';
@@ -51,16 +60,19 @@ function renderGameCards(){
     b.type='button';
     b.className = 'game-card'+(chosenGame===id?' active':'');
     b.innerHTML = `<strong>${meta.title}</strong><small>${meta.blurb}</small>`;
-    b.onclick = ()=>{
-      chosenGame = id;
-      $('seabattleOpts').classList.toggle('hidden', id!=='seabattle');
-      renderGameCards();
-    };
+    b.onclick = ()=>{ chosenGame = id; renderGameCards(); };
+    b.ondblclick = (e)=>{ e.preventDefault(); openSetup(id); };
+    // touch: double-tap
+    let lastTap = 0;
+    b.addEventListener('touchend', (e)=>{
+      const now = Date.now();
+      if(now - lastTap < 350){ e.preventDefault(); openSetup(id); }
+      lastTap = now;
+    }, {passive:false});
     box.appendChild(b);
   });
 }
 renderGameCards();
-$('seabattleOpts').classList.toggle('hidden', chosenGame!=='seabattle');
 
 document.querySelectorAll('.size-btn').forEach(btn=>{
   btn.onclick = ()=>{
@@ -97,7 +109,8 @@ function playerName(el){ return (el.value.trim() || 'Капитан'); }
 
 function applyState(s){
   state = s;
-  $('footerInfo').textContent = `${s.game_title} · код ${s.code}`;
+  lastSettings.game = s.game || lastSettings.game;
+  lastSettings.vsAi = !!s.vs_ai;
   if(s.phase==='lobby'){
     show('lobby');
     $('lobbyGame').textContent = s.game_title;
@@ -498,43 +511,61 @@ function goHome(msg){
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   SB.placed=[]; SB.selected=null;
   show('home');
-  $('homeErr').textContent = msg||'';
+  const err = $('homeErr');
+  if(err) err.textContent = msg||'';
+  const se = $('setupErr');
+  if(se) se.textContent = '';
 }
 
 async function startGame(vsAi){
-  $('homeErr').textContent='';
+  const errEl = $('setupErr') || $('homeErr');
+  if(errEl) errEl.textContent='';
   try{
     const name=playerName($('name'));
     const body={name, game:chosenGame, vs_ai:!!vsAi};
     if(chosenGame==='seabattle') body.size=chosenBoard;
+    lastSettings = {game:chosenGame, vsAi:!!vsAi, name, size:chosenBoard};
     const data=await api('/api/room/create',{method:'POST', body:JSON.stringify(body)});
     token=data.token; code=data.code;
-    LS.set({token,code,name,vs_ai:!!vsAi});
+    LS.set({token,code,name,vs_ai:!!vsAi, game:chosenGame, size:chosenBoard});
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     applyState(data.state); startPoll();
-  }catch(e){ $('homeErr').textContent=e.message; }
+  }catch(e){ if(errEl) errEl.textContent=e.message; }
 }
 
 $('btnVsAi').onclick = ()=>startGame(true);
 $('btnCreate').onclick = ()=>startGame(false);
+$('btnSetupBack').onclick = ()=>goHome();
 
 $('btnJoin').onclick = async ()=>{
-  $('homeErr').textContent='';
+  const errEl = $('setupErr') || $('homeErr');
+  if(errEl) errEl.textContent='';
   try{
-    const joinName=playerName($('joinName'));
+    const joinName=playerName($('name'));
     const data=await api('/api/room/join',{method:'POST', body:JSON.stringify({
       name:joinName,
       code:($('joinCode').value||'').replace(/\D/g,'').slice(0,6)
     })});
     token=data.token; code=data.code;
-    LS.set({token,code,name:joinName});
+    chosenGame = data.state.game || chosenGame;
+    lastSettings = {game:chosenGame, vsAi:false, name:joinName, size:chosenBoard};
+    LS.set({token,code,name:joinName, game:chosenGame});
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     applyState(data.state); startPoll();
-  }catch(e){ $('homeErr').textContent=e.message; }
+  }catch(e){ if(errEl) errEl.textContent=e.message; }
 };
 
 $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,6); });
 $('btnAgain').onclick=()=>goHome();
+$('btnReplay').onclick = async ()=>{
+  chosenGame = lastSettings.game || chosenGame;
+  chosenBoard = lastSettings.size || chosenBoard;
+  if($('name') && lastSettings.name) $('name').value = lastSettings.name;
+  // mark size buttons
+  document.querySelectorAll('.size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+  await startGame(!!lastSettings.vsAi);
+};
+
 $('btnExitLobby').onclick=()=>leaveGame();
 $('btnExitPlay').onclick=()=>leaveGame();
 
@@ -542,7 +573,7 @@ $('btnExitPlay').onclick=()=>leaveGame();
   const saved=LS.get();
   if(!saved||!saved.token||!saved.code) return;
   token=saved.token; code=saved.code;
-  if(saved.name){ $('name').value=saved.name; $('joinName').value=saved.name; }
+  if(saved.name && $('name')) $('name').value=saved.name;
   try{
     const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
     applyState(data.state); startPoll();
