@@ -498,8 +498,8 @@ function renderBoardGame(mount, s, kind){
 
 /* ===== Backgammon ===== */
 function bgLayout(you){
-  // Классическая доска: дом текущего игрока — справа внизу.
-  // p1 home 18-23, p2 home 0-5. Для p2 зеркалим индексы.
+  // Классическая доска: у текущего игрока голова справа сверху, дом справа снизу.
+  // Для p2 — поворот на 180°, а не зеркало.
   const base = {
     topLeft:  [11,10,9,8,7,6],
     topRight: [5,4,3,2,1,0],
@@ -507,12 +507,12 @@ function bgLayout(you){
     botRight: [18,19,20,21,22,23],
   };
   if(you !== 'p2') return base;
-  const flip = arr => arr.map(i => 23 - i);
+  const rev = arr => arr.slice().reverse();
   return {
-    topLeft: flip(base.topLeft),
-    topRight: flip(base.topRight),
-    botLeft: flip(base.botLeft),
-    botRight: flip(base.botRight),
+    topLeft:  rev(base.botRight), // 23..18
+    topRight: rev(base.botLeft),  // 17..12
+    botLeft:  rev(base.topRight), // 0..5
+    botRight: rev(base.topLeft),  // 6..11
   };
 }
 
