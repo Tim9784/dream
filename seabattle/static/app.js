@@ -542,12 +542,12 @@ function renderBackgammon(mount, s){
       if(pointIdx===myHead && count>0 && who===me) p.classList.add('head-glow');
       if(pointIdx===(me==='p1'?12:0) && count>0 && who===opp) p.classList.add('head-glow');
       const stack=document.createElement('div'); stack.className='stack';
-      const show = Math.min(count, 8);
+      // Всегда одинаковый размер фишек: рисуем до 5, остальное — числом
+      const show = Math.min(count, 5);
       for(let n=0;n<show;n++){
         const c=document.createElement('div'); c.className='checker '+(who||''); stack.appendChild(c);
       }
-      if(count>8){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+count; stack.appendChild(m); }
-      else if(count>1){ const m=document.createElement('div'); m.className='checker-count'; m.textContent=String(count); stack.appendChild(m); }
+      if(count>1){ const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+count; stack.appendChild(m); }
       p.appendChild(stack);
       p.onclick=()=>{
         if(!myTurn) return;
