@@ -247,16 +247,14 @@ function setPlayStatus(s, text, opts){
 function setWinChance(s){
   const box = $('winChance');
   const pctEl = $('winChancePct');
-  const fill = $('winChanceFill');
-  if(!box || !pctEl || !fill) return;
+  if(!box || !pctEl) return;
   const show = !!(s && s.vs_ai && s.win_chance!=null && (s.phase==='playing' || s.phase==='placing' || s.phase==='done'));
   box.classList.toggle('hidden', !show);
   if(!show) return;
   const pct = Math.max(0, Math.min(100, Number(s.win_chance)||0));
   pctEl.textContent = pct + '%';
-  fill.style.width = pct + '%';
-  fill.classList.remove('low','mid','high');
-  fill.classList.add(pct < 35 ? 'low' : (pct < 60 ? 'mid' : 'high'));
+  box.classList.remove('low','mid','high');
+  box.classList.add(pct < 35 ? 'low' : (pct < 60 ? 'mid' : 'high'));
 }
 
 function applyState(s, opts={}){
