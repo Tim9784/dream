@@ -162,12 +162,26 @@ function renderHandover(s, nextSlot){
 }
 
 function isMyAction(s){
-  if(!s || !s.you) return false;
-  if(s.phase==='playing') return String(s.turn)===String(s.you);
+  if(!s) return false;
   if(s.phase==='placing'){
+    if(!s.you) return false;
     const ready = (s.game_state && s.game_state.ready) || {};
-    // твой ход на расстановке, пока сам не готов
     return ready[s.you] !== true;
+  }
+  if(s.phase!=='playing') return false;
+  if(s.you!=null && s.turn!=null && String(s.turn)===String(s.you)) return true;
+  if(s.your_name && s.turn && s.players && s.players[s.turn] && s.players[s.turn].name===s.your_name) return true;
+  // запасной путь по тексту статуса (если you вдруг потерялся)
+  if(s.your_name && s.message){
+    const name = s.your_name;
+    const msg = String(s.message);
+    if(
+      msg === 'Ход '+name ||
+      msg.startsWith('Ход '+name) ||
+      msg.indexOf('— '+name) !== -1 ||
+      msg.indexOf('- '+name) !== -1 ||
+      msg.indexOf(name+' продолжает') !== -1
+    ) return true;
   }
   return false;
 }
@@ -181,7 +195,20 @@ function setPlayStatus(s, text, opts){
   if(opts.forceMyTurn === true) mine = true;
   else if(opts.forceMyTurn === false) mine = false;
   else mine = isMyAction(s);
-  el.classList.toggle('my-turn', !!mine);
+  // жёстко выставляем класс, без toggle-гонок
+  el.className = mine ? 'status my-turn' : 'status';
+  if(mine){
+    const light = document.documentElement.getAttribute('data-theme')==='light';
+    el.style.setProperty('color', light ? '#166534' : '#86efac', 'important');
+    el.style.setProperty('background', light ? 'rgba(22,163,74,.18)' : 'rgba(34,197,94,.28)', 'important');
+    el.style.setProperty('border-color', light ? 'rgba(22,163,74,.65)' : 'rgba(74,222,128,.75)', 'important');
+    el.style.fontWeight = '700';
+  } else {
+    el.style.removeProperty('color');
+    el.style.removeProperty('background');
+    el.style.removeProperty('border-color');
+    el.style.fontWeight = '';
+  }
 }
 
 function applyState(s, opts={}){
@@ -228,6 +255,8 @@ function applyState(s, opts={}){
     const who = s.vs_local && s.your_name ? `${s.your_name}: ` : '';
     setPlayStatus(s, who + (s.message || ''));
     renderGame(s);
+    // после рендера доски ещё раз — на случай гонки с poll
+    setPlayStatus(s, who + (s.message || ''));
   } else if(s.phase==='done'){
     show('done');
     if(s.vs_local){
