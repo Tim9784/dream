@@ -142,6 +142,31 @@ function slotName(s, slot){
   return (s.players && s.players[slot] && s.players[slot].name) || (slot==='p1'?'Игрок 1':'Игрок 2');
 }
 
+function renderLobbyPlayers(s){
+  const el = $('lobbyPlayers');
+  if(!el) return;
+  const need = s.max_players || 2;
+  const slots = Object.keys(s.players||{}).sort();
+  const seated = slots.filter(k => s.players[k]);
+  const empty = Math.max(0, need - seated.length);
+  const rows = seated.map(slot => {
+    const p = s.players[slot];
+    const mine = slot === s.you;
+    const you = mine ? ' <span class="lobby-you-tag">ты</span>' : '';
+    return `<li class="lobby-player${mine?' me':''}"><span class="lobby-player-dot"></span><span class="lobby-player-name">${escapeHtml(p.name)}</span>${you}</li>`;
+  });
+  for(let i=0;i<empty;i++){
+    rows.push(`<li class="lobby-player empty"><span class="lobby-player-dot"></span><span class="lobby-player-name">Ждём игрока…</span></li>`);
+  }
+  el.innerHTML = `
+    <div class="lobby-players-title">Сейчас в лобби</div>
+    <ul class="lobby-players-list">${rows.join('')}</ul>`;
+}
+
+function escapeHtml(str){
+  return String(str??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 async function switchToSlot(slot){
   if(!vsLocal || !tokens[slot]) return;
   token = tokens[slot];
@@ -272,8 +297,11 @@ function applyState(s, opts={}){
     $('codeView').textContent = s.code;
     const need = s.max_players || 2;
     const have = s.players_count || Object.values(s.players||{}).filter(Boolean).length;
-    $('lobbyHint').textContent = s.message || `Ждём игроков… ${have}/${need}`;
-    $('lobbyYou').textContent = s.your_name ? `Ты: ${s.your_name}` : '';
+    const left = Math.max(0, need - have);
+    $('lobbyHint').textContent = left
+      ? (s.message || `Ждём игроков… ${have}/${need}`)
+      : (s.message || 'Все на месте, начинаем…');
+    renderLobbyPlayers(s);
     setWinChance(null);
     startPoll();
   } else if(s.phase==='placing' || s.phase==='playing'){

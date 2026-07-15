@@ -412,7 +412,7 @@ def create_room():
     elif vs_ai:
         msg = "Игра с компьютером"
     else:
-        msg = f"Ждём игроков… 1/{max_p}"
+        msg = f"В лобби: {name} · ждём игроков… 1/{max_p}"
 
     players = {s: None for s in SLOTS[:max_p]}
     players["p1"] = {"token": token, "name": name, "ai": False}
@@ -501,7 +501,13 @@ def join_room():
     room["players"][seat] = {"token": token, "name": name, "ai": False}
     filled = len(filled_slots(room))
     max_p = int(room.get("max_players") or 2)
-    room["message"] = f"Игроков: {filled}/{max_p}"
+    names = [
+        p["name"]
+        for s in SLOTS[:max_p]
+        for p in [(room.get("players") or {}).get(s)]
+        if p
+    ]
+    room["message"] = f"В лобби: {', '.join(names)} · {filled}/{max_p}"
     if seats_ready(room):
         start_game_room(room)
     save_room(code, room)
