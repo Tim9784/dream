@@ -18,6 +18,7 @@ ROOM_TTL = 3 * 60 * 60
 CODE_LEN = 6
 DEFAULT_NAME = "Капитан"
 AI_NAME = "Компьютер"
+AI_THINK_SEC = 1.0
 MAX_JSON_BYTES = 12_000
 MAX_ROOMS = 400
 TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -157,45 +158,78 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     }
 
 
+def schedule_ai(room: dict[str, Any]) -> None:
+    """Отложить ход робота ~на секунду, чтобы не ходил мгновенно."""
+    if not room.get("vs_ai"):
+        return
+    room["ai_due"] = time.time() + AI_THINK_SEC
+
+
+def ai_should_act(room: dict[str, Any]) -> bool:
+    if not room.get("vs_ai") or room.get("phase") == "done":
+        return False
+    ai_slot = room.get("ai_slot") or "p2"
+    if room["game"] == "seabattle" and room["phase"] == "placing":
+        return not bool(room["state"]["ready"].get(ai_slot))
+    return room["phase"] == "playing" and room.get("turn") == ai_slot
+
+
+def maybe_schedule_ai(room: dict[str, Any]) -> None:
+    if ai_should_act(room):
+        schedule_ai(room)
+
+
 def run_ai_turns(room: dict[str, Any]) -> None:
     """Сделать ходы компьютера, пока его очередь / пока не разместил флот."""
     if not room.get("vs_ai"):
         return
+    due = float(room.get("ai_due") or 0)
+    if due and time.time() < due:
+        return
+
     ai_slot = room.get("ai_slot") or "p2"
     mod = get_game(room["game"])
     if not mod or not hasattr(mod, "ai_action"):
         return
 
+    acted = False
     for _ in range(60):
         if room["phase"] == "done":
-            return
+            break
 
         # морской бой: AI ставит корабли в фазе placing
         if room["game"] == "seabattle" and room["phase"] == "placing":
             if room["state"]["ready"].get(ai_slot):
-                return
+                break
             action = mod.ai_action(room, ai_slot)
             if not action:
-                return
+                break
             ok, _ = mod.apply_action(room, ai_slot, action)
             if not ok:
-                return
+                break
+            acted = True
             continue
 
         if room["phase"] != "playing":
-            return
+            break
         if room.get("turn") != ai_slot:
-            return
+            break
 
         action = mod.ai_action(room, ai_slot)
         if not action:
-            return
+            break
         ok, err = mod.apply_action(room, ai_slot, action)
         if not ok:
             # если AI не смог — не крутимся вечно
             room["message"] = room.get("message") or f"Компьютер: {err}"
-            return
+            break
+        acted = True
 
+    if acted:
+        room.pop("ai_due", None)
+    elif ai_should_act(room) and not room.get("ai_due"):
+        # ещё должен ходить, но хода не вышло — не крутимся; ждём следующий poll
+        schedule_ai(room)
 
 @app.before_request
 def security_gate():
@@ -316,7 +350,7 @@ def create_room():
             "ai": True,
         }
         mod.on_both_joined(room)
-        run_ai_turns(room)
+        maybe_schedule_ai(room)
     elif vs_local:
         token2 = secrets.token_hex(16)
         room["players"]["p2"] = {
@@ -418,7 +452,7 @@ def room_action(code: str):
     if not ok:
         return jsonify({"ok": False, "error": err}), 400
 
-    run_ai_turns(room)
+    maybe_schedule_ai(room)
     save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
 
