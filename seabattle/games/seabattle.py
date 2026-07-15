@@ -110,6 +110,21 @@ def _all_sunk(board: list[list[int]], shots: list[list[int]], grid: int) -> bool
     return True
 
 
+def _ships_left(board: list[list[int]], shots: list[list[int]], grid: int) -> int:
+    """Сколько кораблей ещё не потоплено (есть хотя бы одна непробитая клетка)."""
+    seen: set[tuple[int, int]] = set()
+    left = 0
+    for y in range(grid):
+        for x in range(grid):
+            if board[y][x] != 1 or (x, y) in seen:
+                continue
+            cells = _ship_cells(board, x, y, grid)
+            seen |= cells
+            if any(shots[cy][cx] != 1 for cx, cy in cells):
+                left += 1
+    return left
+
+
 def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tuple[bool, str]:
     st = room["state"]
     kind = action.get("type")
@@ -189,6 +204,9 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         opp = "p2" if viewer == "p1" else "p1"
         if room["players"].get(opp):
             out["incoming"] = st["shots"][opp]
+        if st.get("phase") == "battle" or room.get("phase") in ("playing", "done"):
+            out["enemy_ships_left"] = _ships_left(st["boards"][opp], st["shots"][viewer], grid)
+            out["my_ships_left"] = _ships_left(st["boards"][viewer], st["shots"][opp], grid)
     return out
 
 

@@ -407,8 +407,12 @@ function renderSeabattle(mount, s){
     return;
   }
   // battle
+  const enemyLeft = gs.enemy_ships_left;
+  const enemyLabel = enemyLeft==null
+    ? 'Враг'
+    : `Враг · осталось ${enemyLeft} ${shipWordRu(enemyLeft)}`;
   mount.innerHTML = `<div class="boards">
-    <div><h3 style="color:var(--heading)">Враг</h3><div class="grid" id="sbEnemy" style="grid-template-columns:repeat(${SB.GRID},1fr)"></div></div>
+    <div><h3 style="color:var(--heading)">${enemyLabel}</h3><div class="grid" id="sbEnemy" style="grid-template-columns:repeat(${SB.GRID},1fr)"></div></div>
     <div><h3 style="color:var(--heading)">Твои корабли</h3><div class="grid" id="sbOwn" style="grid-template-columns:repeat(${SB.GRID},1fr)"></div></div>
   </div>`;
   const myTurn = s.turn===s.you;
@@ -425,6 +429,15 @@ function renderSeabattle(mount, s){
 }
 
 function emptySB(){ return Array.from({length:SB.GRID},()=>Array(SB.GRID).fill(0)); }
+
+function shipWordRu(n){
+  const abs = Math.abs(n|0);
+  const n10 = abs % 10, n100 = abs % 100;
+  if(n100>=11 && n100<=14) return 'кораблей';
+  if(n10===1) return 'корабль';
+  if(n10>=2 && n10<=4) return 'корабля';
+  return 'кораблей';
+}
 
 function paintSBPlace(){
   const g=$('sbPlace'); if(!g) return;
