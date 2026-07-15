@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260715c">
+<link rel="stylesheet" href="/static/style.css?v=20260715d">
 <script>
 (function(){
   try{
@@ -107,6 +107,10 @@
         <button class="btn danger" id="btnExitPlay">Выход</button>
       </div>
       <div class="status" id="playStatus">…</div>
+      <div class="win-chance hidden" id="winChance">
+        <div class="win-chance-label">Шанс победы <strong id="winChancePct">—</strong></div>
+        <div class="win-chance-bar"><span id="winChanceFill"></span></div>
+      </div>
       <div id="gameMount"></div>
       <div class="err" id="playErr"></div>
     </div>
@@ -120,6 +124,6 @@
     </div>
   </section>
 </div>
-<script src="/static/app.js?v=20260715c"></script>
+<script src="/static/app.js?v=20260715d"></script>
 </body>
 </html>

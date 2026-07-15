@@ -192,6 +192,39 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return out
 
 
+def _ship_cells_left(board: list[list[int]], shots_on: list[list[int]]) -> int:
+    n = 0
+    for y, row in enumerate(board):
+        for x, v in enumerate(row):
+            if v == 1 and shots_on[y][x] != 1:
+                n += 1
+    return n
+
+
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import clamp_chance, done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    if room.get("phase") != "playing":
+        return 50
+    st = room["state"]
+    opp = "p2" if slot == "p1" else "p1"
+    my_left = _ship_cells_left(st["boards"][slot], st["shots"][opp])
+    opp_left = _ship_cells_left(st["boards"][opp], st["shots"][slot])
+    total = my_left + opp_left
+    if total <= 0:
+        return 50
+    # больше целых клеток у тебя / меньше у врага = выше шанс
+    score = (my_left - opp_left) / total * 6.0
+    # бонус за уже нанесённый урон
+    hits_on_opp = sum(1 for row in st["shots"][slot] for v in row if v == 1)
+    hits_on_me = sum(1 for row in st["shots"][opp] for v in row if v == 1)
+    score += (hits_on_opp - hits_on_me) * 0.15
+    return score_to_chance(score, scale=1.8) if total else clamp_chance(50)
+
+
 def _random_fleet(fleet: list[int], grid: int) -> list[dict[str, Any]]:
     import random as _rnd
     for _attempt in range(200):

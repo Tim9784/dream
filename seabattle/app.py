@@ -141,6 +141,14 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         players_out[slot] = None if not p else {"name": p["name"], "connected": True, "ai": bool(p.get("ai"))}
 
     game_view = mod.public_view(room, viewer)
+    win_pct = None
+    if room.get("vs_ai") and viewer and room["players"].get(viewer) and not room["players"][viewer].get("ai"):
+        if hasattr(mod, "win_chance"):
+            try:
+                win_pct = int(mod.win_chance(room, viewer))
+                win_pct = max(0, min(100, win_pct))
+            except Exception:
+                win_pct = None
     return {
         "code": room["code"],
         "game": game_id,
@@ -154,6 +162,7 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "your_name": room["players"][viewer]["name"] if viewer and room["players"].get(viewer) else None,
         "vs_ai": bool(room.get("vs_ai")),
         "vs_local": bool(room.get("vs_local")),
+        "win_chance": win_pct,
         "game_state": game_view,
     }
 

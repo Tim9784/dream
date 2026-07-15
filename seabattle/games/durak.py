@@ -380,6 +380,41 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     }
 
 
+def _hand_strength(hand: list[str], trump: str) -> float:
+    s = 0.0
+    for c in hand:
+        s += RANK_ORDER[_rank(c)]
+        if _suit(c) == trump:
+            s += 6.5
+    return s
+
+
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    st = room["state"]
+    opp = "p2" if slot == "p1" else "p1"
+    trump = st["trump"]
+    my = st["hands"][slot]
+    their = st["hands"][opp]
+    my_s = _hand_strength(my, trump)
+    their_s = _hand_strength(their, trump)
+    # меньше карт — ближе к выходу
+    card_bias = (len(their) - len(my)) * 2.2
+    deck_bias = min(8, len(st["deck"])) * 0.05  # рано ≈ ничья
+    score = (my_s - their_s) * 0.35 + card_bias - deck_bias
+    if not st["deck"]:
+        if not my and their:
+            return 100
+        if my and not their:
+            return 1
+        score += (len(their) - len(my)) * 3
+    return score_to_chance(score, scale=4.5)
+
+
 def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
     acts = legal_actions(room, slot)
     if not acts:

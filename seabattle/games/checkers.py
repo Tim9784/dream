@@ -172,6 +172,16 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
 
 
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    side = 1 if slot == "p1" else -1
+    score = _eval_chk(room["state"]["board"], side)
+    return score_to_chance(score, scale=180)
+
 def _clone_board(board: list[list[int]]) -> list[list[int]]:
     return [row[:] for row in board]
 

@@ -211,6 +211,21 @@ function setPlayStatus(s, text, opts){
   }
 }
 
+function setWinChance(s){
+  const box = $('winChance');
+  const pctEl = $('winChancePct');
+  const fill = $('winChanceFill');
+  if(!box || !pctEl || !fill) return;
+  const show = !!(s && s.vs_ai && s.win_chance!=null && (s.phase==='playing' || s.phase==='placing' || s.phase==='done'));
+  box.classList.toggle('hidden', !show);
+  if(!show) return;
+  const pct = Math.max(0, Math.min(100, Number(s.win_chance)||0));
+  pctEl.textContent = pct + '%';
+  fill.style.width = pct + '%';
+  fill.classList.remove('low','mid','high');
+  fill.classList.add(pct < 35 ? 'low' : (pct < 60 ? 'mid' : 'high'));
+}
+
 function applyState(s, opts={}){
   state = s;
   lastSettings.game = s.game || lastSettings.game;
@@ -225,6 +240,7 @@ function applyState(s, opts={}){
         show('playing');
         $('playTitle').textContent = s.game_title + ' · вместе';
         setPlayStatus(s, s.message || '', {forceMyTurn:false});
+        setWinChance(s);
         $('playErr').textContent = '';
         if(handoverFor !== need){
           handoverFor = need;
@@ -248,17 +264,20 @@ function applyState(s, opts={}){
     $('codeView').textContent = s.code;
     $('lobbyHint').textContent = s.message || 'Ждём второго игрока…';
     $('lobbyYou').textContent = s.your_name ? `Ты: ${s.your_name}` : '';
+    setWinChance(null);
   } else if(s.phase==='placing' || s.phase==='playing'){
     show('playing');
     const localTag = s.vs_local ? ' · вместе' : '';
     $('playTitle').textContent = s.game_title + localTag;
     const who = s.vs_local && s.your_name ? `${s.your_name}: ` : '';
     setPlayStatus(s, who + (s.message || ''));
+    setWinChance(s);
     renderGame(s);
     // после рендера доски ещё раз — на случай гонки с poll
     setPlayStatus(s, who + (s.message || ''));
   } else if(s.phase==='done'){
     show('done');
+    setWinChance(s);
     if(s.vs_local){
       if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
         $('doneStatus').textContent = s.message;

@@ -67,6 +67,46 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
 
 
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    board = room["state"]["board"][:]
+    me = 1 if slot == "p1" else 2
+    opp = 3 - me
+
+    def winner(b: list[int]) -> int | None:
+        return _winner(b)
+
+    def minimax(b: list[int], turn: int) -> int:
+        w = winner(b)
+        if w == me:
+            return 10
+        if w == opp:
+            return -10
+        if w == 0:
+            return 0
+        scores = []
+        for i in range(9):
+            if b[i]:
+                continue
+            b[i] = turn
+            scores.append(minimax(b, opp if turn == me else me))
+            b[i] = 0
+        if not scores:
+            return 0
+        return max(scores) if turn == me else min(scores)
+
+    # чей сейчас ход в позиции
+    turn_mark = me if room.get("turn") == slot else opp
+    outcome = minimax(board, turn_mark)
+    # 10→~90, 0→50, -10→~10 + лёгкий шум по заполненности
+    filled = sum(1 for v in board if v)
+    jitter = (4 - filled) * 1.5
+    return score_to_chance(outcome + jitter, scale=4.5)
+
 def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
     board = room["state"]["board"][:]
     me = 1 if slot == "p1" else 2

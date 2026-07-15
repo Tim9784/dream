@@ -251,6 +251,16 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     return {"board": room["state"]["board"]}
 
 
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    white = slot == "p1"
+    score = _eval_board(room["state"]["board"], white_perspective=white)
+    return score_to_chance(score, scale=250)
+
 VALUES = {"P": 100, "N": 320, "B": 330, "R": 500, "Q": 900, "K": 20000}
 
 # simplified piece-square tables (white perspective; flip for black)

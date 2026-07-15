@@ -273,6 +273,18 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     }
 
 
+def win_chance(room: dict[str, Any], slot: str) -> int:
+    from .chance import done_chance, score_to_chance
+
+    done = done_chance(room, slot)
+    if done is not None:
+        return done
+    opp = "p2" if slot == "p1" else "p1"
+    # разница оценок — на равной позиции ≈ 50%
+    score = _score_position(room["state"], slot) - _score_position(room["state"], opp)
+    return score_to_chance(score, scale=55)
+
+
 def _progress(slot: str, idx: int) -> int:
     if slot == "p1":
         return idx
