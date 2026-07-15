@@ -12,6 +12,7 @@
   --brand:linear-gradient(90deg,#e8f1f8,#7dd3fc 55%,#38bdf8);
   --card-hover:rgba(56,189,248,.12);
   --board-light:#e8d5b0; --board-dark:#b58863;
+  --turn-bg:rgba(34,197,94,.14); --turn-line:rgba(74,222,128,.45); --turn-text:#bbf7d0;
 }
 html[data-theme="light"]{
   --bg0:#eef6fb; --bg1:#e2eef6; --bg2:#d5e7f2;
@@ -27,6 +28,7 @@ html[data-theme="light"]{
   --brand:linear-gradient(90deg,#0f2740,#0369a1 55%,#0284c7);
   --card-hover:rgba(2,132,199,.08);
   --board-light:#f0d9b5; --board-dark:#b58863;
+  --turn-bg:rgba(22,163,74,.12); --turn-line:rgba(22,163,74,.4); --turn-text:#15803d;
 }
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%;touch-action:manipulation;overscroll-behavior:none}
@@ -112,6 +114,12 @@ html[data-theme="light"] .btn:not(.ghost):not(.danger){color:#fff;background:lin
 .status{
   text-align:center;padding:12px 14px;border-radius:12px;margin-bottom:14px;
   background:var(--status-bg);border:1px solid var(--status-line);color:var(--status-text);
+  transition:color .15s ease,background .15s ease,border-color .15s ease;
+}
+.status.my-turn{
+  color:var(--turn-text);
+  background:var(--turn-bg);
+  border-color:var(--turn-line);
 }
 .hidden{display:none!important}
 .err{color:var(--err);text-align:center;margin-top:8px;min-height:1.2em}

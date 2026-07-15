@@ -161,6 +161,24 @@ function renderHandover(s, nextSlot){
   });
 }
 
+function isMyAction(s){
+  if(!s || !s.you) return false;
+  if(s.phase==='playing') return s.turn===s.you;
+  if(s.phase==='placing'){
+    const ready = (s.game_state && s.game_state.ready) || {};
+    return !ready[s.you];
+  }
+  return false;
+}
+
+function setPlayStatus(s, text, {forceMyTurn}={}){
+  const el = $('playStatus');
+  if(!el) return;
+  el.textContent = text || '';
+  const mine = forceMyTurn===true || (forceMyTurn!==false && isMyAction(s));
+  el.classList.toggle('my-turn', !!mine);
+}
+
 function applyState(s, opts={}){
   state = s;
   lastSettings.game = s.game || lastSettings.game;
@@ -174,7 +192,7 @@ function applyState(s, opts={}){
       if(needsPrivacy(s.game)){
         show('playing');
         $('playTitle').textContent = s.game_title + ' · вместе';
-        $('playStatus').textContent = s.message || '';
+        setPlayStatus(s, s.message || '', {forceMyTurn:false});
         $('playErr').textContent = '';
         if(handoverFor !== need){
           handoverFor = need;
@@ -203,7 +221,7 @@ function applyState(s, opts={}){
     const localTag = s.vs_local ? ' · вместе' : '';
     $('playTitle').textContent = s.game_title + localTag;
     const who = s.vs_local && s.your_name ? `${s.your_name}: ` : '';
-    $('playStatus').textContent = who + (s.message || '');
+    setPlayStatus(s, who + (s.message || ''));
     renderGame(s);
   } else if(s.phase==='done'){
     show('done');
