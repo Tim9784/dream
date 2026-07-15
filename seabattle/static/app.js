@@ -4,7 +4,7 @@ const GAMES = {
   checkers: {title:'Шашки', blurb:'Русские шашки 8×8'},
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
   backgammon: {title:'Нарды', blurb:'Длинные нарды — все с одной головы'},
-  durak: {title:'Дурак', blurb:'Подкидной на двоих, колода 36'},
+  durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
 };
 
 const PRESETS = {
@@ -25,7 +25,8 @@ const show = id => screens.forEach(s => $(s).classList.toggle('hidden', s!==id))
 
 let chosenGame = 'seabattle';
 let chosenBoard = 'medium';
-let lastSettings = {game:'seabattle', vsAi:false, vsLocal:false, name:'Игрок 1', name2:'Игрок 2', size:'medium'};
+let chosenPlayers = 2;
+let lastSettings = {game:'seabattle', vsAi:false, vsLocal:false, name:'Игрок 1', name2:'Игрок 2', size:'medium', players:2};
 let token=null, code=null, state=null, pollTimer=null;
 let tokens = {p1:null, p2:null};
 let vsLocal = false;
@@ -60,6 +61,7 @@ function openSetup(gameId){
   chosenGame = gameId || chosenGame;
   $('setupTitle').textContent = GAMES[chosenGame].title;
   $('seabattleOpts').classList.toggle('hidden', chosenGame!=='seabattle');
+  if($('durakOpts')) $('durakOpts').classList.toggle('hidden', chosenGame!=='durak');
   $('setupErr').textContent = '';
   setLocalNamesVisible(false);
   show('setup');
@@ -81,8 +83,14 @@ renderGameCards();
 
 document.querySelectorAll('.size-btn').forEach(btn=>{
   btn.onclick = ()=>{
-    chosenBoard = btn.dataset.size;
-    document.querySelectorAll('.size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+    if(btn.dataset.size){
+      chosenBoard = btn.dataset.size;
+      document.querySelectorAll('#sizePick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+    }
+    if(btn.dataset.players){
+      chosenPlayers = parseInt(btn.dataset.players,10)||2;
+      document.querySelectorAll('#durakPlayersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
+    }
   };
 });
 
@@ -262,9 +270,12 @@ function applyState(s, opts={}){
     show('lobby');
     $('lobbyGame').textContent = s.game_title;
     $('codeView').textContent = s.code;
-    $('lobbyHint').textContent = s.message || 'Ждём второго игрока…';
+    const need = s.max_players || 2;
+    const have = s.players_count || Object.values(s.players||{}).filter(Boolean).length;
+    $('lobbyHint').textContent = s.message || `Ждём игроков… ${have}/${need}`;
     $('lobbyYou').textContent = s.your_name ? `Ты: ${s.your_name}` : '';
     setWinChance(null);
+    startPoll();
   } else if(s.phase==='placing' || s.phase==='playing'){
     show('playing');
     const localTag = s.vs_local ? ' · вместе' : '';
@@ -278,9 +289,29 @@ function applyState(s, opts={}){
   } else if(s.phase==='done'){
     show('done');
     setWinChance(s);
-    if(s.vs_local){
-      if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
-        $('doneStatus').textContent = s.message;
+    startPoll(); // чтобы увидеть рематч от друзей
+    const voted = !!(s.you && s.rematch_votes && s.rematch_votes[s.you]);
+    const rematchBtn = $('btnReplay');
+    if(rematchBtn){
+      if(s.vs_ai || s.vs_local){
+        rematchBtn.textContent = 'Играть заново';
+        rematchBtn.disabled = false;
+      } else if(s.rematch_ready){
+        rematchBtn.textContent = 'Играть заново';
+        rematchBtn.disabled = false;
+      } else if(voted){
+        rematchBtn.textContent = 'Ждём остальных…';
+        rematchBtn.disabled = true;
+      } else {
+        rematchBtn.textContent = 'Играть заново вместе';
+        rematchBtn.disabled = false;
+      }
+    }
+    if(s.result==='draw' || (s.winner==null && !s.loser && (s.message||'').toLowerCase().includes('нич'))){
+      $('doneStatus').textContent = s.message || 'Ничья!';
+    } else if(s.vs_local){
+      if(s.loser && s.players[s.loser]){
+        $('doneStatus').textContent = s.message || `${s.players[s.loser].name} — дурак`;
       } else if(s.winner && s.players[s.winner]){
         $('doneStatus').textContent = s.message || `Победа: ${s.players[s.winner].name}`;
       } else {
@@ -288,15 +319,18 @@ function applyState(s, opts={}){
       }
     } else {
       const win = s.winner && s.winner === s.you;
-      if(s.winner==null && (s.message||'').toLowerCase().includes('нич')){
-        $('doneStatus').textContent = s.message;
-      } else if(win){
+      const iWon = win || (s.winners && s.you && s.winners.includes(s.you));
+      const iLost = s.loser && s.loser === s.you;
+      if(s.result==='draw' || (s.winner==null && !s.loser && (s.message||'').toLowerCase().includes('нич'))){
+        $('doneStatus').textContent = s.message || 'Ничья!';
+      } else if(iWon){
         $('doneStatus').textContent = s.message || 'Победа!';
+      } else if(iLost){
+        $('doneStatus').textContent = s.message || 'Ты дурак';
       } else {
-        $('doneStatus').textContent = s.message || 'Поражение';
+        $('doneStatus').textContent = s.message || 'Игра окончена';
       }
     }
-    stopPoll();
   }
 }
 
@@ -763,7 +797,8 @@ function cardRed(code){ return code && (code[1]==='h'||code[1]==='d'); }
 function renderDurak(mount, s){
   const gs = s.game_state||{};
   const me = s.you;
-  const opp = me==='p1'?'p2':'p1';
+  const order = gs.order || Object.keys(gs.hand_counts||{}).filter(k=>s.players&&s.players[k]);
+  const others = order.filter(slot=>slot!==me);
   const myTurn = s.phase==='playing' && s.turn===me;
   const legal = gs.legal||[];
   const canAttack = new Set(legal.filter(a=>a.type==='attack').map(a=>a.card));
@@ -771,26 +806,37 @@ function renderDurak(mount, s){
   const canTake = legal.some(a=>a.type==='take');
   const canPass = legal.some(a=>a.type==='pass');
   const myHand = (gs.hands && me && gs.hands[me]) || [];
-  const oppCount = (gs.hand_counts && opp && gs.hand_counts[opp]) || 0;
   const table = gs.table||[];
+  const outSet = new Set(gs.out||[]);
   const expectHint = {
     attack:'Сходи картой',
     defend:'Отбей или возьми',
-    throw:'Подкинь или скажи «бито»'
+    throw:'Подкинь или пас / бито'
   }[gs.expect]||'';
+
+  const othersHtml = others.map(slot=>{
+    const n = (gs.hand_counts && gs.hand_counts[slot]) || 0;
+    const nm = (s.players[slot]&&s.players[slot].name) || slot;
+    const roles = [
+      gs.attacker===slot?'атака':'',
+      gs.defender===slot?'защита':'',
+      outSet.has(slot)?'вышел':'',
+      s.turn===slot?'ходит':''
+    ].filter(Boolean).join(' · ');
+    return `<div class="durak-opp-seat" data-slot="${slot}">
+      <div class="durak-role">${nm} · ${n} карт${roles? ' · '+roles:''}</div>
+      <div class="durak-hand opp" data-backs="${slot}"></div>
+    </div>`;
+  }).join('');
 
   mount.innerHTML = `
     <div class="durak">
       <div class="durak-meta">
         <div>Козырь <span class="durak-trump ${cardRed(gs.trump_card)?'red':''}">${cardLabel(gs.trump_card)}</span></div>
         <div>Колода: <strong>${gs.deck_count||0}</strong></div>
-        <div>Сброс: <strong>${gs.discard||0}</strong></div>
+        <div>Игроков: <strong>${order.length}</strong></div>
       </div>
-      <div class="durak-opp">
-        <div class="durak-role">${(s.players[opp]&&s.players[opp].name)||'Соперник'} · ${oppCount} карт
-          ${gs.attacker===opp?' · атака':''}${gs.defender===opp?' · защита':''}</div>
-        <div class="durak-hand opp" id="durakOpp"></div>
-      </div>
+      <div class="durak-others">${othersHtml || '<div class="hint">Нет соперников</div>'}</div>
       <div class="durak-table" id="durakTable"></div>
       <div class="durak-actions" id="durakActions"></div>
       <div class="durak-me">
@@ -800,12 +846,18 @@ function renderDurak(mount, s){
       </div>
     </div>`;
 
-  const oppBox = $('durakOpp');
-  for(let i=0;i<oppCount;i++){
-    const back = document.createElement('div');
-    back.className = 'dcard back';
-    oppBox.appendChild(back);
-  }
+  mount.querySelectorAll('[data-backs]').forEach(box=>{
+    const slot = box.getAttribute('data-backs');
+    const n = (gs.hand_counts && gs.hand_counts[slot]) || 0;
+    for(let i=0;i<Math.min(n,8);i++){
+      const back = document.createElement('div');
+      back.className = 'dcard back';
+      box.appendChild(back);
+    }
+    if(n>8){
+      const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+n; box.appendChild(m);
+    }
+  });
 
   const tableBox = $('durakTable');
   if(!table.length){
@@ -839,7 +891,8 @@ function renderDurak(mount, s){
   const actBox = $('durakActions');
   if(canPass){
     const b = document.createElement('button');
-    b.className = 'btn'; b.type='button'; b.textContent='Бито';
+    b.className = 'btn'; b.type='button';
+    b.textContent = (gs.expect==='throw' ? 'Пас / бито' : 'Бито');
     b.onclick = ()=>doAction({type:'pass'});
     actBox.appendChild(b);
   }
@@ -900,7 +953,8 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
     const body={name, game:chosenGame, vs_ai:!!vsAi, vs_local:!!vsLocalMode};
     if(vsLocalMode) body.name2 = name2;
     if(chosenGame==='seabattle') body.size=chosenBoard;
-    lastSettings = {game:chosenGame, vsAi:!!vsAi, vsLocal:!!vsLocalMode, name, name2, size:chosenBoard};
+    if(chosenGame==='durak' && !vsAi && !vsLocalMode) body.players = chosenPlayers;
+    lastSettings = {game:chosenGame, vsAi:!!vsAi, vsLocal:!!vsLocalMode, name, name2, size:chosenBoard, players:chosenPlayers};
     const data=await api('/api/room/create',{method:'POST', body:JSON.stringify(body)});
     code=data.code;
     vsLocal = !!data.vs_local || !!vsLocalMode;
@@ -958,11 +1012,32 @@ $('btnJoin').onclick = async ()=>{
 $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,6); });
 $('btnAgain').onclick=()=>goHome();
 $('btnReplay').onclick = async ()=>{
+  // та же комната: рематч с теми же людьми / роботом
+  if(state && code && token && state.phase==='done'){
+    try{
+      const data = await api(`/api/room/${code}/rematch`, {
+        method:'POST', body:JSON.stringify({token})
+      });
+      if(data.state){
+        applyState(data.state);
+        startPoll();
+        return;
+      }
+    }catch(e){
+      // если комната умерла — создадим новую ниже
+      if(!String(e.message||'').includes('не найдена') && !String(e.message||'').includes('Не найдена')){
+        $('doneStatus').textContent = e.message;
+        return;
+      }
+    }
+  }
   chosenGame = lastSettings.game || chosenGame;
-  chosenBoard = lastSettings.size || lastSettings.size || chosenBoard;
+  chosenBoard = lastSettings.size || chosenBoard;
+  chosenPlayers = lastSettings.players || chosenPlayers;
   if($('name') && lastSettings.name) $('name').value = lastSettings.name;
   if($('name2') && lastSettings.name2) $('name2').value = lastSettings.name2;
-  document.querySelectorAll('.size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+  document.querySelectorAll('#sizePick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+  document.querySelectorAll('#durakPlayersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
   if(lastSettings.vsLocal){
     setLocalNamesVisible(true);
     await startGame({vsLocalMode:true});

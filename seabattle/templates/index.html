@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260715d">
+<link rel="stylesheet" href="/static/style.css?v=20260715e">
 <script>
 (function(){
   try{
@@ -73,6 +73,15 @@
       </div>
     </div>
 
+    <div id="durakOpts" class="hidden" style="margin-top:14px">
+      <span class="field-label" style="font-size:.9rem">Игроков за столом (по сети)</span>
+      <div class="size-pick" id="durakPlayersPick">
+        <button type="button" class="size-btn active" data-players="2"><strong>2</strong><small>Классика</small></button>
+        <button type="button" class="size-btn" data-players="3"><strong>3</strong><small>Компания</small></button>
+        <button type="button" class="size-btn" data-players="4"><strong>4</strong><small>Полный стол</small></button>
+      </div>
+    </div>
+
     <div class="row" style="margin-top:18px">
       <button class="btn" id="btnCreate">По сети</button>
       <button class="btn" id="btnLocal">Вдвоём здесь</button>
@@ -124,6 +133,6 @@
     </div>
   </section>
 </div>
-<script src="/static/app.js?v=20260715d"></script>
+<script src="/static/app.js?v=20260715e"></script>
 </body>
 </html>

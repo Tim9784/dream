@@ -393,6 +393,8 @@ html[data-theme="light"] .durak-table{background:rgba(15,39,64,.05)}
 }
 .dcard:disabled{opacity:.92;cursor:default}
 .durak-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0}
+.durak-others{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.durak-opp-seat{text-align:center}
 .durak-me{margin-top:6px}
 .durak-opp{margin-bottom:4px}
 

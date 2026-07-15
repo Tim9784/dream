@@ -21,6 +21,7 @@ AI_NAME = "Компьютер"
 AI_THINK_SEC = 1.0
 MAX_JSON_BYTES = 12_000
 MAX_ROOMS = 400
+SLOTS = ("p1", "p2", "p3", "p4")
 TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 SAFE_NAME_RE = re.compile(r"[\x00-\x1f\x7f<>{}[\]\\\"`]")
 
@@ -109,8 +110,7 @@ def valid_token(token: str) -> bool:
 def player_slot(room: dict[str, Any], token: str) -> str | None:
     if not valid_token(token):
         return None
-    for slot in ("p1", "p2"):
-        p = room["players"].get(slot)
+    for slot, p in (room.get("players") or {}).items():
         if p and p.get("token") == token:
             return slot
     return None
@@ -118,6 +118,66 @@ def player_slot(room: dict[str, Any], token: str) -> str | None:
 
 def opponent(slot: str) -> str:
     return "p2" if slot == "p1" else "p1"
+
+
+def filled_slots(room: dict[str, Any]) -> list[str]:
+    return [s for s in SLOTS if room.get("players", {}).get(s)]
+
+
+def empty_slot(room: dict[str, Any]) -> str | None:
+    max_p = int(room.get("max_players") or 2)
+    for s in SLOTS[:max_p]:
+        if not room.get("players", {}).get(s):
+            return s
+    return None
+
+
+def max_players_for(game_id: str, data: dict[str, Any] | None = None) -> int:
+    data = data or {}
+    if game_id == "durak":
+        try:
+            n = int(data.get("players") or data.get("max_players") or 2)
+        except (TypeError, ValueError):
+            n = 2
+        return max(2, min(4, n))
+    return 2
+
+
+def seats_ready(room: dict[str, Any]) -> bool:
+    return len(filled_slots(room)) >= int(room.get("max_players") or 2)
+
+
+def start_game_room(room: dict[str, Any]) -> None:
+    mod = get_game(room["game"])
+    if not mod:
+        return
+    room["rematch_votes"] = {}
+    room["winner"] = None
+    room["winners"] = None
+    room["loser"] = None
+    room["result"] = None
+    if hasattr(mod, "on_players_ready"):
+        mod.on_players_ready(room)
+    else:
+        mod.on_both_joined(room)
+    maybe_schedule_ai(room)
+
+
+def restart_game_room(room: dict[str, Any]) -> None:
+    """Новая партия с теми же игроками и токенами."""
+    mod = get_game(room["game"])
+    if not mod:
+        return
+    options: dict[str, Any] = {}
+    if room["game"] == "seabattle":
+        options["size"] = (room.get("state") or {}).get("size") or "medium"
+    if room["game"] == "durak":
+        options["players"] = int(room.get("max_players") or 2)
+        options["max_players"] = options["players"]
+    room["state"] = mod.init_state(options)
+    room["turn"] = None
+    room["ai_due"] = None
+    start_game_room(room)
 
 
 def read_json() -> dict[str, Any] | None:
@@ -136,9 +196,15 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     meta = GAMES[game_id]
     mod = meta["module"]
     players_out = {}
-    for slot in ("p1", "p2"):
-        p = room["players"].get(slot)
-        players_out[slot] = None if not p else {"name": p["name"], "connected": True, "ai": bool(p.get("ai"))}
+    max_p = int(room.get("max_players") or 2)
+    for slot in SLOTS[:max_p]:
+        p = (room.get("players") or {}).get(slot)
+        players_out[slot] = None if not p else {
+            "name": p["name"],
+            "connected": True,
+            "ai": bool(p.get("ai")),
+            "rematch": bool((room.get("rematch_votes") or {}).get(slot)),
+        }
 
     game_view = mod.public_view(room, viewer)
     win_pct = None
@@ -149,6 +215,8 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
                 win_pct = max(0, min(100, win_pct))
             except Exception:
                 win_pct = None
+    human_slots = [s for s, p in (room.get("players") or {}).items() if p and not p.get("ai")]
+    votes = room.get("rematch_votes") or {}
     return {
         "code": room["code"],
         "game": game_id,
@@ -156,12 +224,19 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "phase": room["phase"],
         "turn": room.get("turn"),
         "winner": room.get("winner"),
+        "winners": room.get("winners"),
+        "loser": room.get("loser"),
+        "result": room.get("result"),
         "message": room.get("message", ""),
         "players": players_out,
         "you": viewer,
         "your_name": room["players"][viewer]["name"] if viewer and room["players"].get(viewer) else None,
         "vs_ai": bool(room.get("vs_ai")),
         "vs_local": bool(room.get("vs_local")),
+        "max_players": int(room.get("max_players") or 2),
+        "players_count": len(filled_slots(room)),
+        "rematch_votes": {s: bool(votes.get(s)) for s in human_slots},
+        "rematch_ready": bool(human_slots) and all(votes.get(s) for s in human_slots),
         "win_chance": win_pct,
         "game_state": game_view,
     }
@@ -320,18 +395,27 @@ def create_room():
     vs_local = bool(data.get("vs_local"))
     if vs_ai and vs_local:
         return jsonify({"ok": False, "error": "Выбери один режим"}), 400
+    # vs AI / local — всегда двое; по сети для дурака 2–4
+    max_p = 2 if (vs_ai or vs_local) else max_players_for(game_id, data)
     code = new_code()
     token = secrets.token_hex(16)
     size = data.get("size")
-    options = {"size": size} if game_id == "seabattle" and size in ("small", "medium", "large") else (
-        {"size": "medium"} if game_id == "seabattle" else {}
-    )
+    options: dict[str, Any] = {}
+    if game_id == "seabattle":
+        options["size"] = size if size in ("small", "medium", "large") else "medium"
+    if game_id == "durak":
+        options["players"] = max_p
+        options["max_players"] = max_p
+
     if vs_local:
         msg = "Игра вдвоём на одном устройстве"
     elif vs_ai:
         msg = "Игра с компьютером"
     else:
-        msg = "Ждём второго игрока…"
+        msg = f"Ждём игроков… 1/{max_p}"
+
+    players = {s: None for s in SLOTS[:max_p]}
+    players["p1"] = {"token": token, "name": name, "ai": False}
     room = {
         "code": code,
         "game": game_id,
@@ -339,18 +423,21 @@ def create_room():
         "created": time.time(),
         "turn": None,
         "winner": None,
+        "winners": None,
+        "loser": None,
+        "result": None,
         "message": msg,
         "vs_ai": vs_ai,
         "vs_local": vs_local,
+        "max_players": max_p,
         "ai_slot": "p2" if vs_ai else None,
-        "players": {
-            "p1": {"token": token, "name": name, "ai": False},
-            "p2": None,
-        },
+        "players": players,
+        "rematch_votes": {},
         "state": mod.init_state(options),
     }
 
-    tokens_out = {"p1": token, "p2": None}
+    tokens_out = {s: None for s in SLOTS[:max_p]}
+    tokens_out["p1"] = token
 
     if vs_ai:
         room["players"]["p2"] = {
@@ -358,8 +445,7 @@ def create_room():
             "name": AI_NAME,
             "ai": True,
         }
-        mod.on_both_joined(room)
-        maybe_schedule_ai(room)
+        start_game_room(room)
     elif vs_local:
         token2 = secrets.token_hex(16)
         room["players"]["p2"] = {
@@ -368,7 +454,7 @@ def create_room():
             "ai": False,
         }
         tokens_out["p2"] = token2
-        mod.on_both_joined(room)
+        start_game_room(room)
 
     save_room(code, room)
     payload = {
@@ -377,6 +463,7 @@ def create_room():
         "token": token,
         "slot": "p1",
         "vs_local": vs_local,
+        "max_players": max_p,
         "tokens": tokens_out,
         "state": public_state(room, "p1"),
     }
@@ -403,17 +490,28 @@ def join_room():
         return jsonify({"ok": False, "error": "Это партия с компьютером"}), 409
     if room.get("vs_local"):
         return jsonify({"ok": False, "error": "Это локальная партия на одном устройстве"}), 409
-    if room["players"]["p2"] is not None:
-        return jsonify({"ok": False, "error": "Комната уже заполнена"}), 409
     if room["phase"] != "lobby":
         return jsonify({"ok": False, "error": "Игра уже началась"}), 409
 
+    seat = empty_slot(room)
+    if not seat:
+        return jsonify({"ok": False, "error": "Комната уже заполнена"}), 409
+
     token = secrets.token_hex(16)
-    room["players"]["p2"] = {"token": token, "name": name, "ai": False}
-    mod = GAMES[room["game"]]["module"]
-    mod.on_both_joined(room)
+    room["players"][seat] = {"token": token, "name": name, "ai": False}
+    filled = len(filled_slots(room))
+    max_p = int(room.get("max_players") or 2)
+    room["message"] = f"Игроков: {filled}/{max_p}"
+    if seats_ready(room):
+        start_game_room(room)
     save_room(code, room)
-    return jsonify({"ok": True, "code": code, "token": token, "slot": "p2", "state": public_state(room, "p2")})
+    return jsonify({
+        "ok": True,
+        "code": code,
+        "token": token,
+        "slot": seat,
+        "state": public_state(room, seat),
+    })
 
 
 @app.get("/api/room/<code>")
@@ -453,8 +551,8 @@ def room_action(code: str):
         return jsonify({"ok": False, "error": "Нет доступа"}), 403
     if room["players"].get(slot, {}).get("ai"):
         return jsonify({"ok": False, "error": "Ход компьютера"}), 403
-    if not room["players"].get(opponent(slot)):
-        return jsonify({"ok": False, "error": "Ждём соперника"}), 409
+    if room["phase"] == "lobby" or not seats_ready(room):
+        return jsonify({"ok": False, "error": "Ждём игроков"}), 409
 
     mod = get_game(room["game"])
     ok, err = mod.apply_action(room, slot, data)
@@ -464,6 +562,41 @@ def room_action(code: str):
     maybe_schedule_ai(room)
     save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
+
+
+@app.post("/api/room/<code>/rematch")
+def rematch_room(code: str):
+    """Играть заново с теми же людьми в этой комнате."""
+    room = load_room(code)
+    if not room:
+        return jsonify({"ok": False, "error": "Комната не найдена"}), 404
+    data = read_json()
+    if data is None:
+        return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    token = str(data.get("token", ""))
+    slot = player_slot(room, token)
+    if not slot:
+        return jsonify({"ok": False, "error": "Нет доступа"}), 403
+    if room["phase"] != "done":
+        return jsonify({"ok": False, "error": "Партия ещё не окончена"}), 409
+
+    votes = room.setdefault("rematch_votes", {})
+    # локально / с роботом — сразу новая партия
+    if room.get("vs_ai") or room.get("vs_local"):
+        restart_game_room(room)
+        save_room(code, room)
+        return jsonify({"ok": True, "restarted": True, "state": public_state(room, slot)})
+
+    votes[slot] = True
+    humans = [s for s, p in (room.get("players") or {}).items() if p and not p.get("ai")]
+    room["message"] = f"Играть заново: {sum(1 for s in humans if votes.get(s))}/{len(humans)}"
+    if humans and all(votes.get(s) for s in humans):
+        restart_game_room(room)
+        restarted = True
+    else:
+        restarted = False
+    save_room(code, room)
+    return jsonify({"ok": True, "restarted": restarted, "state": public_state(room, slot)})
 
 
 @app.post("/api/room/<code>/leave")
@@ -482,19 +615,34 @@ def leave_room(code: str):
         return jsonify({"ok": False, "error": "Нельзя"}), 403
 
     leaver = room["players"][slot]["name"]
-    opp_slot = opponent(slot)
-    opp = room["players"].get(opp_slot)
 
     if room["phase"] == "lobby" or room.get("vs_ai") or room.get("vs_local"):
         delete_room(code)
         return jsonify({"ok": True, "left": True})
 
-    if opp and room["phase"] in ("placing", "playing"):
-        room["phase"] = "done"
-        room["winner"] = opp_slot
-        room["turn"] = None
-        room["message"] = f"{leaver} вышел. Победа за {opp['name']}!"
+    if room["phase"] in ("placing", "playing", "done"):
+        others = [
+            (s, p) for s, p in (room.get("players") or {}).items()
+            if p and s != slot and not p.get("ai")
+        ]
         room["players"][slot] = None
+        if room["phase"] == "done":
+            # вышел после игры — комната живёт для рематча остальных
+            if not others:
+                delete_room(code)
+                return jsonify({"ok": True, "left": True})
+            save_room(code, room)
+            return jsonify({"ok": True, "left": True})
+
+        room["phase"] = "done"
+        room["turn"] = None
+        room["result"] = "abort"
+        if len(others) == 1:
+            room["winner"] = others[0][0]
+            room["message"] = f"{leaver} вышел. Победа за {others[0][1]['name']}!"
+        else:
+            room["winner"] = None
+            room["message"] = f"{leaver} вышел. Партия окончена"
         save_room(code, room)
         return jsonify({"ok": True, "left": True})
 
