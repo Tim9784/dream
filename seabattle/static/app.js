@@ -163,19 +163,24 @@ function renderHandover(s, nextSlot){
 
 function isMyAction(s){
   if(!s || !s.you) return false;
-  if(s.phase==='playing') return s.turn===s.you;
+  if(s.phase==='playing') return String(s.turn)===String(s.you);
   if(s.phase==='placing'){
     const ready = (s.game_state && s.game_state.ready) || {};
-    return !ready[s.you];
+    // твой ход на расстановке, пока сам не готов
+    return ready[s.you] !== true;
   }
   return false;
 }
 
-function setPlayStatus(s, text, {forceMyTurn}={}){
+function setPlayStatus(s, text, opts){
+  opts = opts || {};
   const el = $('playStatus');
   if(!el) return;
   el.textContent = text || '';
-  const mine = forceMyTurn===true || (forceMyTurn!==false && isMyAction(s));
+  let mine;
+  if(opts.forceMyTurn === true) mine = true;
+  else if(opts.forceMyTurn === false) mine = false;
+  else mine = isMyAction(s);
   el.classList.toggle('my-turn', !!mine);
 }
 
