@@ -389,7 +389,8 @@ def security_gate():
 @app.after_request
 def security_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
-    resp.headers["X-Frame-Options"] = "DENY"
+    # SAMEORIGIN — DENY мешает проверке счётчика Яндекс.Метрики в части сценариев
+    resp.headers["X-Frame-Options"] = "SAMEORIGIN"
     # strict-origin-when-cross-origin — чтобы Яндекс.Метрика видела переходы
     resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
