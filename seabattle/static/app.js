@@ -75,7 +75,8 @@ function renderGameCards(){
     const b = document.createElement('button');
     b.type='button';
     b.className = 'game-card'+(chosenGame===id?' active':'');
-    b.innerHTML = `<strong>${meta.title}</strong><small>${meta.blurb}</small>`;
+    const mark = (meta.title || '?').charAt(0);
+    b.innerHTML = `<span class="game-card-mark" aria-hidden="true">${mark}</span><span class="game-card-body"><strong>${meta.title}</strong><small>${meta.blurb}</small></span>`;
     b.onclick = ()=>{ chosenGame = id; openSetup(id); };
     box.appendChild(b);
   });
