@@ -293,6 +293,13 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "vs_local": bool(room.get("vs_local")),
         "max_players": int(room.get("max_players") or 2),
         "players_count": len(filled_slots(room)),
+        "is_host": viewer == "p1",
+        "can_start": (
+            room.get("phase") == "lobby"
+            and not room.get("vs_ai")
+            and not room.get("vs_local")
+            and seats_ready(room)
+        ),
         "rematch_votes": {s: bool(votes.get(s)) for s in human_slots},
         "rematch_ready": bool(human_slots) and all(votes.get(s) for s in human_slots),
         "win_chance": win_pct,
@@ -589,9 +596,10 @@ def join_room():
         for p in [(room.get("players") or {}).get(s)]
         if p
     ]
-    room["message"] = f"В лобби: {', '.join(names)} · {filled}/{max_p}"
     if seats_ready(room):
-        start_game_room(room)
+        room["message"] = f"Все на месте · организатор может начать · {filled}/{max_p}"
+    else:
+        room["message"] = f"В лобби: {', '.join(names)} · ждём игроков… {filled}/{max_p}"
     save_room(code, room)
     track_join(rds)
     return jsonify({
@@ -601,6 +609,35 @@ def join_room():
         "slot": seat,
         "state": public_state(room, seat),
     })
+
+
+@app.post("/api/room/<code>/start")
+def start_room(code: str):
+    """Организатор (p1) запускает сетевую партию, когда все места заняты."""
+    ip = g.client_ip
+    if not rate_limit(f"action:{ip}", RL_ACTION[0], RL_ACTION[1]):
+        return too_many()
+    room = load_room(code)
+    if not room:
+        return jsonify({"ok": False, "error": "Комната не найдена"}), 404
+    data = read_json()
+    if data is None:
+        return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    token = str(data.get("token", ""))
+    slot = player_slot(room, token)
+    if not slot:
+        return jsonify({"ok": False, "error": "Нет доступа"}), 403
+    if slot != "p1":
+        return jsonify({"ok": False, "error": "Начать игру может только организатор"}), 403
+    if room.get("vs_ai") or room.get("vs_local"):
+        return jsonify({"ok": False, "error": "Эта партия уже запущена"}), 409
+    if room["phase"] != "lobby":
+        return jsonify({"ok": False, "error": "Игра уже началась"}), 409
+    if not seats_ready(room):
+        return jsonify({"ok": False, "error": "Ещё не все игроки в лобби"}), 409
+    start_game_room(room)
+    save_room(code, room)
+    return jsonify({"ok": True, "state": public_state(room, slot)})
 
 
 @app.get("/api/room/<code>")

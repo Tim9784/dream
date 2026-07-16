@@ -305,15 +305,23 @@ function applyState(s, opts={}){
     show('lobby');
     $('lobbyGame').textContent = s.game_title;
     $('codeView').textContent = s.code;
-    if($('shareHint') && $('shareHint').textContent && !$('shareHint').classList.contains('ok')){
-      $('shareHint').textContent = '';
-    }
+    clearShareHint(false);
     const need = s.max_players || 2;
     const have = s.players_count || Object.values(s.players||{}).filter(Boolean).length;
     const left = Math.max(0, need - have);
-    $('lobbyHint').textContent = left
-      ? (s.message || `Ждём игроков… ${have}/${need}`)
-      : (s.message || 'Все на месте, начинаем…');
+    const canStart = !!s.can_start;
+    const isHost = s.is_host || s.you==='p1';
+    if(left){
+      $('lobbyHint').textContent = s.message || `Ждём игроков… ${have}/${need}`;
+    } else if(isHost){
+      $('lobbyHint').textContent = s.message || 'Все на месте — нажми «Начать игру»';
+    } else {
+      $('lobbyHint').textContent = s.message || 'Все на месте · ждём старта от организатора';
+    }
+    const startRow = $('startRow');
+    if(startRow) startRow.classList.toggle('hidden', !(canStart && isHost));
+    const lobbyErr = $('lobbyErr');
+    if(lobbyErr && !lobbyErr.dataset.keep) lobbyErr.textContent = '';
     renderLobbyPlayers(s);
     setWinChance(null);
     startPoll();
@@ -1030,12 +1038,27 @@ async function leaveGame(){
   }
   goHome();
 }
+function clearShareHint(force=true){
+  const hint = $('shareHint');
+  if(!hint) return;
+  // force=true — всегда сбрасывать; иначе не трогаем свежий «Скопировано» в текущем лобби
+  if(!force && hint.classList.contains('ok') && hint.dataset.code === String(code||'')) return;
+  hint.classList.remove('ok');
+  hint.textContent = '';
+  delete hint.dataset.code;
+}
+
 function goHome(msg){
   stopPoll(); LS.clear();
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   SB.placed=[]; SB.selected=null;
   setLocalNamesVisible(false);
+  clearShareHint(true);
+  const startRow = $('startRow');
+  if(startRow) startRow.classList.add('hidden');
+  const lobbyErr = $('lobbyErr');
+  if(lobbyErr){ lobbyErr.textContent = ''; delete lobbyErr.dataset.keep; }
   show('home');
   const err = $('homeErr');
   if(err) err.textContent = msg||'';
@@ -1046,6 +1069,7 @@ function goHome(msg){
 async function startGame({vsAi=false, vsLocalMode=false}={}){
   const errEl = $('setupErr') || $('homeErr');
   if(errEl) errEl.textContent='';
+  clearShareHint(true);
   try{
     const name=playerName($('name'));
     const name2 = (($('name2')&&$('name2').value.trim()) || 'Игрок 2').slice(0,20);
@@ -1072,8 +1096,25 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
       game:chosenGame, size:chosenBoard
     });
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
+    clearShareHint(true);
     applyState(data.state); startPoll();
   }catch(e){ if(errEl) errEl.textContent=e.message; }
+}
+
+async function joinRoomByCode(roomCode, joinName){
+  const data=await api('/api/room/join',{method:'POST', body:JSON.stringify({
+    name: joinName,
+    code: String(roomCode||'').replace(/\D/g,'').slice(0,6)
+  })});
+  token=data.token; code=data.code;
+  tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=data.slot||'p2';
+  chosenGame = (data.state && data.state.game) || chosenGame;
+  lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:'Игрок 2', size:chosenBoard};
+  LS.set({token,code,name:joinName, game:chosenGame});
+  SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
+  clearShareHint(true);
+  applyState(data.state); startPoll();
+  return data;
 }
 
 $('btnVsAi').onclick = ()=>{ setLocalNamesVisible(false); startGame({vsAi:true}); };
@@ -1093,19 +1134,22 @@ $('btnJoin').onclick = async ()=>{
   const errEl = $('setupErr') || $('homeErr');
   if(errEl) errEl.textContent='';
   try{
-    const joinName=playerName($('name'));
-    const data=await api('/api/room/join',{method:'POST', body:JSON.stringify({
-      name:joinName,
-      code:($('joinCode').value||'').replace(/\D/g,'').slice(0,6)
-    })});
-    token=data.token; code=data.code;
-    tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=data.slot||'p2';
-    chosenGame = data.state.game || chosenGame;
-    lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:'Игрок 2', size:chosenBoard};
-    LS.set({token,code,name:joinName, game:chosenGame});
-    SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
-    applyState(data.state); startPoll();
+    await joinRoomByCode(($('joinCode').value||''), playerName($('name')));
   }catch(e){ if(errEl) errEl.textContent=e.message; }
+};
+
+if($('btnStartGame')) $('btnStartGame').onclick = async ()=>{
+  const errEl = $('lobbyErr');
+  if(errEl){ errEl.textContent=''; delete errEl.dataset.keep; }
+  if(!code || !token) return;
+  try{
+    const data = await api(`/api/room/${code}/start`, {
+      method:'POST', body:JSON.stringify({token})
+    });
+    if(data.state) applyState(data.state);
+  }catch(e){
+    if(errEl){ errEl.textContent=e.message; errEl.dataset.keep='1'; }
+  }
 };
 
 $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,6); });
@@ -1194,17 +1238,17 @@ async function shareInvite(){
   const hint = $('shareHint');
   const roomCode = String(code || ($('codeView')&&$('codeView').textContent) || '').replace(/\D/g,'').slice(0,6);
   if(!roomCode || roomCode.length!==6){
-    if(hint){ hint.classList.remove('ok'); hint.textContent = 'Код ещё не готов'; }
+    if(hint){ hint.classList.remove('ok'); hint.textContent = 'Код ещё не готов'; delete hint.dataset.code; }
     return;
   }
   const url = inviteUrl(roomCode);
   const title = (state && state.game_title) || (GAMES[chosenGame]&&GAMES[chosenGame].title) || 'Omove.ru';
   const text = `Давай сыграем в «${title}» на Omove.ru. Код: ${roomCode}`;
-  if(hint){ hint.classList.remove('ok'); hint.textContent = ''; }
+  if(hint){ hint.classList.remove('ok'); hint.textContent = ''; delete hint.dataset.code; }
   try{
     if(navigator.share){
       await navigator.share({ title: 'Omove.ru', text, url });
-      if(hint){ hint.classList.add('ok'); hint.textContent = 'Отправлено'; }
+      if(hint){ hint.classList.add('ok'); hint.textContent = 'Отправлено'; hint.dataset.code = roomCode; }
       return;
     }
   }catch(e){
@@ -1212,9 +1256,9 @@ async function shareInvite(){
   }
   try{
     await copyText(url);
-    if(hint){ hint.classList.add('ok'); hint.textContent = 'Ссылка скопирована'; }
+    if(hint){ hint.classList.add('ok'); hint.textContent = 'Ссылка скопирована'; hint.dataset.code = roomCode; }
   }catch(_){
-    if(hint){ hint.classList.remove('ok'); hint.textContent = url; }
+    if(hint){ hint.classList.remove('ok'); hint.textContent = url; delete hint.dataset.code; }
   }
 }
 
@@ -1223,11 +1267,19 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
 (async function boot(){
   const pendingJoin = readJoinCodeFromUrl();
   if(pendingJoin){
+    const prev = LS.get();
+    const joinName = ((prev && prev.name) || ($('name') && $('name').value.trim()) || 'Игрок').slice(0,20);
     LS.clear();
     token=null; code=null; state=null;
+    tokens={p1:null,p2:null}; vsLocal=false;
+    if($('name')) $('name').value = joinName;
     if($('joinCode')) $('joinCode').value = pendingJoin;
-    openSetup(chosenGame || 'seabattle');
-    if($('setupErr')) $('setupErr').textContent = 'Введи имя и нажми «Войти» — код уже подставлен';
+    try{
+      await joinRoomByCode(pendingJoin, joinName);
+    }catch(e){
+      openSetup(chosenGame || 'seabattle');
+      if($('setupErr')) $('setupErr').textContent = e.message || 'Не удалось войти по ссылке';
+    }
     return;
   }
 
