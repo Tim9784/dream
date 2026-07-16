@@ -1068,22 +1068,30 @@ function renderDurak(mount, s){
   });
 }
 
-/* ===== Blik ===== */
+/* ===== Blik / OUNO ===== */
 const BLIK_COLOR_CLASS = {c:'blik-c', t:'blik-t', a:'blik-a', v:'blik-v'};
-const BLIK_FACE = {S:'стоп', Z:'↻', D:'+2', WW:'★', WX:'★+4'};
+const BLIK_FACE = {S:'стоп', Z:'↻', D:'+2'};
+// локальный UI: выбор цвета не должен сбрасываться поллом
+let blikUi = { colorPick: null };
 
 function blikCardMeta(code){
-  if(!code) return {cls:'blik-wild', label:'?', wild:true};
-  if(code==='WW') return {cls:'blik-wild', label:'★', wild:true};
-  if(code==='WX') return {cls:'blik-wild blik-wx', label:'★+4', wild:true};
+  if(!code) return {cls:'blik-wild', label:'?', sub:'', wild:true};
+  if(code==='WW') return {cls:'blik-wild', label:'★', sub:'Радуга', wild:true};
+  if(code==='WX') return {cls:'blik-wild blik-wx', label:'+4', sub:'Радуга', wild:true};
   const col = code[0], face = code[1];
   return {
     cls: BLIK_COLOR_CLASS[col] || 'blik-c',
     label: BLIK_FACE[face] || face,
+    sub: '',
     wild: false,
     color: col,
     face
   };
+}
+
+function blikCardHtml(meta){
+  const sub = meta.sub ? `<small>${meta.sub}</small>` : '';
+  return `<span class="bcard-face">${meta.label}${sub}</span>`;
 }
 
 function renderBlik(mount, s){
@@ -1094,11 +1102,6 @@ function renderBlik(mount, s){
   const myTurn = s.phase==='playing' && s.turn===me;
   const legal = gs.legal||[];
   const playable = new Set(legal.filter(a=>a.type==='play').map(a=>a.card));
-  const wildColors = {};
-  legal.filter(a=>a.type==='play' && a.color).forEach(a=>{
-    if(!wildColors[a.card]) wildColors[a.card]=[];
-    wildColors[a.card].push(a.color);
-  });
   const canDraw = legal.some(a=>a.type==='draw');
   const canPass = legal.some(a=>a.type==='pass');
   const playDrawn = legal.filter(a=>a.type==='play_drawn');
@@ -1108,6 +1111,14 @@ function renderBlik(mount, s){
   const cur = gs.current_color || 'c';
   const dir = (gs.direction||1) > 0 ? '→' : '←';
   const labels = gs.color_labels || {c:'Коралл',t:'Бирюза',a:'Янтарь',v:'Фиолет'};
+
+  // сбросить устаревший выбор цвета
+  if(blikUi.colorPick){
+    const pick = blikUi.colorPick;
+    if(pick.mode==='play_drawn' && !gs.drawn) blikUi.colorPick = null;
+    else if(pick.mode==='play' && (!pick.card || !myHand.includes(pick.card) || gs.drawn)) blikUi.colorPick = null;
+    else if(pick.mode==='color' && !colorActs.length) blikUi.colorPick = null;
+  }
 
   const othersHtml = others.map(slot=>{
     const n = (gs.hand_counts && gs.hand_counts[slot]) || 0;
@@ -1119,6 +1130,14 @@ function renderBlik(mount, s){
     </div>`;
   }).join('');
 
+  const drawnMeta = gs.drawn ? blikCardMeta(gs.drawn) : null;
+  const drawnBlock = drawnMeta
+    ? `<div class="blik-drawn-wrap">
+         <div class="blik-drawn-label">Взятая карта</div>
+         <div class="bcard ${drawnMeta.cls}" id="blikDrawnCard">${blikCardHtml(drawnMeta)}</div>
+       </div>`
+    : '';
+
   mount.innerHTML = `
     <div class="blik">
       <div class="blik-meta">
@@ -1129,7 +1148,8 @@ function renderBlik(mount, s){
       <div class="blik-others">${othersHtml || '<div class="hint">Нет соперников</div>'}</div>
       <div class="blik-table">
         <button type="button" class="bcard back blik-deck" id="blikDeck" ${canDraw?'':'disabled'} title="Взять карту"></button>
-        <div class="bcard ${top.cls}" id="blikTop"><span>${top.label}</span></div>
+        <div class="bcard ${top.cls}" id="blikTop">${blikCardHtml(top)}</div>
+        ${drawnBlock}
       </div>
       <div class="blik-actions" id="blikActions"></div>
       <div class="blik-me">
@@ -1152,45 +1172,67 @@ function renderBlik(mount, s){
   });
 
   const act = $('blikActions');
-  const pickColorThen = (fn)=>{
+  const showColorPicker = ()=>{
     act.innerHTML = '';
     const tip = document.createElement('div');
-    tip.className = 'hint'; tip.textContent = 'Выбери цвет';
+    tip.className = 'hint'; tip.style.cssText='width:100%;margin-bottom:4px';
+    tip.textContent = 'Выбери цвет';
     act.appendChild(tip);
     ['c','t','a','v'].forEach(col=>{
       const b = document.createElement('button');
       b.type='button'; b.className='btn blik-color-btn '+ (BLIK_COLOR_CLASS[col]||'');
       b.textContent = labels[col]||col;
-      b.onclick = ()=>fn(col);
+      b.onclick = ()=>{
+        const pick = blikUi.colorPick;
+        blikUi.colorPick = null;
+        if(!pick) return;
+        if(pick.mode==='play_drawn') doAction({type:'play_drawn', color:col});
+        else if(pick.mode==='play') doAction({type:'play', card:pick.card, color:col});
+        else if(pick.mode==='color') doAction({type:'color', color:col});
+      };
       act.appendChild(b);
     });
+    const cancel = document.createElement('button');
+    cancel.type='button'; cancel.className='btn ghost'; cancel.textContent='Назад';
+    cancel.onclick = ()=>{ blikUi.colorPick = null; renderBlik(mount, s); };
+    act.appendChild(cancel);
   };
 
-  if(colorActs.length){
-    pickColorThen(col=>doAction({type:'color', color:col}));
+  if(colorActs.length && !blikUi.colorPick){
+    blikUi.colorPick = {mode:'color'};
+  }
+
+  if(blikUi.colorPick){
+    showColorPicker();
   } else if(playDrawn.length){
     const b = document.createElement('button');
     b.type='button'; b.className='btn';
-    const drawnMeta = blikCardMeta(gs.drawn);
-    b.textContent = 'Сходить взятой ('+drawnMeta.label+')';
+    b.textContent = drawnMeta && drawnMeta.wild
+      ? ('Сходить: '+(drawnMeta.sub||'Радуга')+(drawnMeta.label==='+4'?' +4':''))
+      : 'Сходить этой';
     b.onclick = ()=>{
-      if(gs.drawn==='WW' || gs.drawn==='WX') pickColorThen(col=>doAction({type:'play_drawn', color:col}));
-      else doAction({type:'play_drawn'});
+      if(gs.drawn==='WW' || gs.drawn==='WX'){
+        blikUi.colorPick = {mode:'play_drawn'};
+        renderBlik(mount, s);
+      } else {
+        blikUi.colorPick = null;
+        doAction({type:'play_drawn'});
+      }
     };
     act.appendChild(b);
   }
-  if(canPass){
+  if(canPass && !blikUi.colorPick){
     const b = document.createElement('button');
     b.type='button'; b.className='btn ghost'; b.textContent='Пас';
-    b.onclick = ()=>doAction({type:'pass'});
+    b.onclick = ()=>{ blikUi.colorPick = null; doAction({type:'pass'}); };
     act.appendChild(b);
   }
-  if(canDraw){
+  if(canDraw && !blikUi.colorPick){
     const deckBtn = $('blikDeck');
-    if(deckBtn) deckBtn.onclick = ()=>doAction({type:'draw'});
+    if(deckBtn) deckBtn.onclick = ()=>{ blikUi.colorPick = null; doAction({type:'draw'}); };
     const b = document.createElement('button');
     b.type='button'; b.className='btn ghost'; b.textContent='Взять карту';
-    b.onclick = ()=>doAction({type:'draw'});
+    b.onclick = ()=>{ blikUi.colorPick = null; doAction({type:'draw'}); };
     act.appendChild(b);
   }
 
@@ -1201,16 +1243,17 @@ function renderBlik(mount, s){
     const c = document.createElement('button');
     c.type='button';
     c.className = 'bcard '+meta.cls;
-    c.innerHTML = `<span>${meta.label}</span>`;
-    const ok = myTurn && playable.has(code) && !gs.drawn && !colorActs.length;
+    c.innerHTML = blikCardHtml(meta);
+    const ok = myTurn && playable.has(code) && !gs.drawn && !colorActs.length && !blikUi.colorPick;
     if(!ok) c.disabled = true;
     else c.style.cursor = 'pointer';
     c.onclick = ()=>{
       if(!ok) return;
       if(meta.wild){
-        const cols = wildColors[code] || ['c','t','a','v'];
-        pickColorThen(col=>doAction({type:'play', card:code, color:col}));
+        blikUi.colorPick = {mode:'play', card:code};
+        renderBlik(mount, s);
       } else {
+        blikUi.colorPick = null;
         doAction({type:'play', card:code});
       }
     };
@@ -1242,6 +1285,7 @@ function goHome(msg){
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   SB.placed=[]; SB.selected=null;
+  blikUi = { colorPick: null };
   setLocalNamesVisible(false);
   clearShareHint(true);
   const startRow = $('startRow');

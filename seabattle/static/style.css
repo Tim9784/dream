@@ -581,11 +581,15 @@ html[data-theme="light"] .durak-table{background:rgba(0,0,0,.04)}
 .blik-table{
   min-height:120px;margin:12px 0;padding:16px 10px;border-radius:16px;
   border:1px dashed var(--line);background:rgba(0,0,0,.14);
-  display:flex;gap:18px;justify-content:center;align-items:center;
+  display:flex;gap:18px;justify-content:center;align-items:flex-end;flex-wrap:wrap;
 }
 html[data-theme="light"] .blik-table{background:rgba(0,0,0,.04)}
+.blik-drawn-wrap{display:flex;flex-direction:column;align-items:center;gap:6px}
+.blik-drawn-label{font-size:.78rem;color:var(--soft);font-weight:600}
+.blik-drawn-wrap .bcard{outline:2px solid rgba(255,255,255,.35);outline-offset:2px}
+html[data-theme="light"] .blik-drawn-wrap .bcard{outline-color:rgba(0,0,0,.2)}
 .blik-hand{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;min-height:72px;align-items:flex-end}
-.blik-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0}
+.blik-actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;min-height:48px;margin:8px 0;align-items:center}
 .blik-me{margin-top:6px}
 .bcard{
   width:62px;height:88px;border-radius:14px;border:1px solid rgba(0,0,0,.2);
@@ -594,7 +598,13 @@ html[data-theme="light"] .blik-table{background:rgba(0,0,0,.04)}
   box-shadow:0 3px 10px rgba(0,0,0,.28);cursor:default;padding:4px;color:#fff;
   position:relative;overflow:hidden;
 }
-.bcard span{position:relative;z-index:1;line-height:1.1;padding:0 2px}
+.bcard-face,.bcard span{
+  position:relative;z-index:1;line-height:1.05;padding:0 2px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+}
+.bcard-face small{
+  font-size:.62rem;font-weight:700;letter-spacing:.02em;opacity:.95;text-transform:uppercase;
+}
 .bcard::after{
   content:"";position:absolute;inset:8px;border-radius:10px;border:1px solid rgba(255,255,255,.28);pointer-events:none;
 }
