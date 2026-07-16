@@ -34,7 +34,7 @@ GAMES = {
         "module": durak,
     },
     "blik": {
-        "title": "Блик",
+        "title": "OUNO",
         "blurb": "Сбрось карты по цвету или знаку — 2–4 игрока",
         "module": blik,
     },

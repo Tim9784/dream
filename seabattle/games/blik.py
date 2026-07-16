@@ -1,4 +1,4 @@
-"""Блик — сброс карт по цвету или знаку (2–4 игрока). Оригинальная игра, не связанная с чужими брендами."""
+"""OUNO — сброс карт по цвету или знаку (2–4 игрока). Оригинальная игра."""
 from __future__ import annotations
 
 import random
@@ -198,7 +198,7 @@ def _apply_card_effects(room: dict[str, Any], slot: str, card: str, chosen_color
     room["turn"] = _next_slot(st, slot)
     left = len(st["hands"].get(slot) or [])
     if left == 1:
-        room["message"] = f"{name}: Блик! Осталась 1 карта. Ход {room['players'][room['turn']]['name']}"
+        room["message"] = f"{name}: OUNO! Осталась 1 карта. Ход {room['players'][room['turn']]['name']}"
     else:
         room["message"] = f"{name} сходил. Ход {room['players'][room['turn']]['name']}"
 
