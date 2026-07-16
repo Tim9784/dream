@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Камера</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    touch-action: none;
+  }
+  #cam {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    width: 100dvw;
+    height: 100dvh;
+    object-fit: cover;
+    background: #000;
+    border: 0;
+    outline: 0;
+    transform: scaleX(-1); /* зеркало как у фронтальной */
+  }
+  #gate {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    color: #e5e5e5;
+    font: 600 1.1rem/1.35 system-ui, sans-serif;
+    text-align: center;
+    padding: 24px;
+    cursor: pointer;
+    z-index: 2;
+  }
+  #gate.hidden { display: none; }
+  #err {
+    position: fixed;
+    left: 0; right: 0; bottom: 24px;
+    color: #fca5a5;
+    font: 500 .95rem/1.35 system-ui, sans-serif;
+    text-align: center;
+    padding: 0 16px;
+    z-index: 3;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <video id="cam" playsinline webkit-playsinline autoplay muted></video>
+  <div id="gate">Нажми, чтобы включить камеру</div>
+  <div id="err"></div>
+<script>
+(function () {
+  const video = document.getElementById('cam');
+  const gate = document.getElementById('gate');
+  const err = document.getElementById('err');
+  let started = false;
+
+  async function goFullscreen() {
+    const el = document.documentElement;
+    try {
+      if (el.requestFullscreen) await el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    } catch (_) {}
+  }
+
+  async function startCamera() {
+    if (started) return;
+    err.textContent = '';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      err.textContent = 'Камера недоступна в этом браузере';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'user' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      });
+      video.srcObject = stream;
+      await video.play().catch(function () {});
+      started = true;
+      gate.classList.add('hidden');
+      await goFullscreen();
+    } catch (e) {
+      err.textContent = 'Не удалось открыть камеру: разреши доступ в браузере';
+      gate.textContent = 'Нажми ещё раз после разрешения камеры';
+    }
+  }
+
+  gate.addEventListener('click', startCamera, { passive: true });
+  gate.addEventListener('touchend', function (e) {
+    e.preventDefault();
+    startCamera();
+  }, { passive: false });
+
+  // автозапуск где браузер позволяет
+  startCamera();
+})();
+</script>
+</body>
+</html>
