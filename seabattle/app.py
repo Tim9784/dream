@@ -9,10 +9,10 @@ import secrets
 import time
 from typing import Any
 
-import redis
 from flask import Flask, g, jsonify, render_template, request
 
 from games import GAMES, get_game
+from memory_store import MemoryStore
 
 ROOM_TTL = 3 * 60 * 60
 CODE_LEN = 6
@@ -35,7 +35,21 @@ RL_GLOBAL_WRITE = (200, 10)
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_JSON_BYTES
 app.config["JSON_AS_ASCII"] = False
-rds = redis.Redis(host="127.0.0.1", port=6379, db=1, decode_responses=True)
+
+
+def _make_store():
+    """Redis если доступен, иначе in-memory (shared-хостинг без Redis)."""
+    try:
+        import redis as _redis
+
+        client = _redis.Redis(host="127.0.0.1", port=6379, db=1, decode_responses=True)
+        client.ping()
+        return client, _redis.RedisError
+    except Exception:
+        return MemoryStore(), Exception
+
+
+rds, RedisError = _make_store()
 
 
 def room_key(code: str) -> str:
@@ -59,7 +73,7 @@ def rate_limit(bucket: str, limit: int, window: int) -> bool:
         if n == 1:
             rds.expire(key, window)
         return n <= limit
-    except redis.RedisError:
+    except RedisError:
         return True
 
 
@@ -78,7 +92,7 @@ def new_code() -> str:
 def count_rooms() -> int:
     try:
         return sum(1 for _ in rds.scan_iter(match="lobby:room:*", count=200))
-    except redis.RedisError:
+    except RedisError:
         return 0
 
 
@@ -661,7 +675,7 @@ def health():
     try:
         rds.ping()
         return jsonify({"ok": True})
-    except redis.RedisError:
+    except RedisError:
         return jsonify({"ok": False}), 500
 
 
