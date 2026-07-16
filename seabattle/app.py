@@ -390,7 +390,8 @@ def security_gate():
 def security_headers(resp):
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["X-Frame-Options"] = "DENY"
-    resp.headers["Referrer-Policy"] = "no-referrer"
+    # strict-origin-when-cross-origin — чтобы Яндекс.Метрика видела переходы
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     resp.headers["Cache-Control"] = resp.headers.get("Cache-Control") or "no-store"
     # не светим детали сервера
