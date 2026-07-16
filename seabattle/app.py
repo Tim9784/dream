@@ -76,6 +76,25 @@ def _make_store():
 rds, RedisError = _make_store()
 
 
+def _load_config() -> dict[str, Any]:
+    path = os.environ.get("PANEL_CONFIG") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "config.json"
+    )
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+_CFG = _load_config()
+# Скрытый путь статистики — не светим в UI обычным пользователям
+STATS_PATH = str(_CFG.get("stats_path") or "m-k7p2qx9w").strip().strip("/")
+if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", STATS_PATH):
+    STATS_PATH = "m-k7p2qx9w"
+
+
 def room_key(code: str) -> str:
     return f"lobby:room:{code}"
 
@@ -402,14 +421,20 @@ def index():
     return render_template("index.html", games=GAMES)
 
 
-@app.get("/stats")
+@app.get(f"/{STATS_PATH}")
 def stats_page():
-    return render_template("stats.html")
+    return render_template("stats.html", stats_api=f"/{STATS_PATH}/api")
 
 
-@app.get("/api/stats")
+@app.get(f"/{STATS_PATH}/api")
 def api_stats():
     return jsonify(stats_snapshot(rds, GAMES, count_rooms))
+
+
+@app.get("/stats")
+@app.get("/api/stats")
+def stats_hidden():
+    return jsonify({"ok": False, "error": "Не найдено"}), 404
 
 
 @app.get("/api/games")

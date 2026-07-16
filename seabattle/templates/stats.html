@@ -20,7 +20,7 @@
 })();
 </script>
 </head>
-<body>
+<body data-stats-api="{{ stats_api }}">
 <div class="wrap">
   <div class="header-row">
     <div>
@@ -61,7 +61,8 @@
 </div>
 <script>
 async function loadStats(){
-  const res = await fetch('/api/stats');
+  const api = document.body.dataset.statsApi || '/api/stats';
+  const res = await fetch(api);
   const d = await res.json();
   if(!d.ok) throw new Error('stats');
   const t = d.totals || {};
