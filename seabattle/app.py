@@ -20,7 +20,7 @@ from stats import track_finished, track_join, track_room_created, track_visit
 
 ROOM_TTL = 3 * 60 * 60
 CODE_LEN = 6
-DEFAULT_NAME = "Капитан"
+DEFAULT_NAME = "Лиса"
 AI_NAME = "Компьютер"
 AI_THINK_SEC = 1.0
 MAX_JSON_BYTES = 12_000
@@ -28,6 +28,13 @@ MAX_ROOMS = 400
 SLOTS = ("p1", "p2", "p3", "p4")
 TOKEN_RE = re.compile(r"^[0-9a-f]{32}$")
 SAFE_NAME_RE = re.compile(r"[\x00-\x1f\x7f<>{}[\]\\\"`]")
+ANIMAL_NAMES = (
+    "Лиса", "Волк", "Медведь", "Заяц", "Ёж", "Белка", "Выдра", "Рысь", "Тигр", "Лев",
+    "Панда", "Коала", "Енот", "Барсук", "Олень", "Лось", "Кабан", "Бобёр", "Сова", "Орёл",
+    "Сокол", "Ворон", "Пингвин", "Дельфин", "Кит", "Акула", "Осьминог", "Краб", "Черепаха", "Лягушка",
+    "Кот", "Пёс", "Хомяк", "Капибара", "Лама", "Альпака", "Жираф", "Зебра", "Слон", "Носорог",
+    "Крокодил", "Хамелеон", "Попугай", "Пеликан", "Фламинго", "Ехидна", "Кенгуру", "Сурикат", "Мангуст", "Нерпа",
+)
 
 # Redis rate limits: (max_hits, window_sec)
 RL_CREATE = (8, 60)
@@ -155,10 +162,17 @@ def delete_room(code: str) -> None:
     rds.delete(room_key(code))
 
 
-def normalize_name(raw: Any, fallback: str = DEFAULT_NAME) -> str:
+def random_animal(exclude: str | None = None) -> str:
+    pool = [a for a in ANIMAL_NAMES if a != exclude] or list(ANIMAL_NAMES)
+    return random.choice(pool)
+
+
+def normalize_name(raw: Any, fallback: str | None = None) -> str:
     name = str(raw or "").strip()[:20]
     name = SAFE_NAME_RE.sub("", name).strip()
-    return name or fallback
+    if name:
+        return name
+    return fallback if fallback is not None else random_animal()
 
 
 def valid_token(token: str) -> bool:

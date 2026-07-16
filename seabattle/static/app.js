@@ -8,6 +8,19 @@ const GAME_ICONS = {
   hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
 };
 
+const ANIMALS = [
+  'Лиса','Волк','Медведь','Заяц','Ёж','Белка','Выдра','Рысь','Тигр','Лев',
+  'Панда','Коала','Енот','Барсук','Олень','Лось','Кабан','Бобёр','Сова','Орёл',
+  'Сокол','Ворон','Пингвин','Дельфин','Кит','Акула','Осьминог','Краб','Черепаха','Лягушка',
+  'Кот','Пёс','Хомяк','Капибара','Лама','Альпака','Жираф','Зебра','Слон','Носорог',
+  'Крокодил','Хамелеон','Попугай','Пеликан','Фламинго','Ехидна','Кенгуру','Сурикат','Мангуст','Нерпа',
+];
+
+function randomAnimal(exclude){
+  const pool = exclude ? ANIMALS.filter(a => a !== exclude) : ANIMALS.slice();
+  return pool[Math.floor(Math.random() * pool.length)] || 'Лиса';
+}
+
 const GAMES = {
   seabattle: {title:'Морской бой', blurb:'Расставь корабли и потопи флот'},
   tictactoe: {title:'Крестики-нолики', blurb:'Классика 3×3'},
@@ -37,7 +50,7 @@ const show = id => screens.forEach(s => $(s).classList.toggle('hidden', s!==id))
 let chosenGame = 'seabattle';
 let chosenBoard = 'medium';
 let chosenPlayers = 2;
-let lastSettings = {game:'seabattle', vsAi:false, vsLocal:false, name:'Игрок 1', name2:'Игрок 2', size:'medium', players:2};
+let lastSettings = {game:'seabattle', vsAi:false, vsLocal:false, name:randomAnimal(), name2:randomAnimal(), size:'medium', players:2};
 let token=null, code=null, state=null, pollTimer=null;
 let tokens = {p1:null, p2:null};
 let vsLocal = false;
@@ -130,7 +143,18 @@ function startPoll(){
 }
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
-function playerName(el){ return (el.value.trim() || 'Игрок 1'); }
+function playerName(el){ return (el.value.trim() || randomAnimal()); }
+
+(function fillDefaultNames(){
+  const n1 = $('name');
+  const n2 = $('name2');
+  if(n1 && (!n1.value.trim() || /^Игрок\s*\d*$/i.test(n1.value.trim()))){
+    n1.value = randomAnimal();
+  }
+  if(n2 && (!n2.value.trim() || /^Игрок\s*\d*$/i.test(n2.value.trim()))){
+    n2.value = randomAnimal(n1 && n1.value.trim());
+  }
+})();
 
 function needsPrivacy(game){
   // экран «я за экраном» — морской бой и карты (скрытая рука)
@@ -151,7 +175,7 @@ function desiredHotseatSlot(s){
 }
 
 function slotName(s, slot){
-  return (s.players && s.players[slot] && s.players[slot].name) || (slot==='p1'?'Игрок 1':'Игрок 2');
+  return (s.players && s.players[slot] && s.players[slot].name) || randomAnimal();
 }
 
 function renderLobbyPlayers(s){
@@ -1072,7 +1096,7 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
   clearShareHint(true);
   try{
     const name=playerName($('name'));
-    const name2 = (($('name2')&&$('name2').value.trim()) || 'Игрок 2').slice(0,20);
+    const name2 = (($('name2')&&$('name2').value.trim()) || randomAnimal(name)).slice(0,20);
     const body={name, game:chosenGame, vs_ai:!!vsAi, vs_local:!!vsLocalMode};
     if(vsLocalMode) body.name2 = name2;
     if(chosenGame==='seabattle') body.size=chosenBoard;
@@ -1109,7 +1133,7 @@ async function joinRoomByCode(roomCode, joinName){
   token=data.token; code=data.code;
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=data.slot||'p2';
   chosenGame = (data.state && data.state.game) || chosenGame;
-  lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:'Игрок 2', size:chosenBoard};
+  lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:randomAnimal(joinName), size:chosenBoard};
   LS.set({token,code,name:joinName, game:chosenGame});
   SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   clearShareHint(true);
@@ -1268,7 +1292,7 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   const pendingJoin = readJoinCodeFromUrl();
   if(pendingJoin){
     const prev = LS.get();
-    const joinName = ((prev && prev.name) || ($('name') && $('name').value.trim()) || 'Игрок').slice(0,20);
+    const joinName = ((prev && prev.name) || ($('name') && $('name').value.trim()) || randomAnimal()).slice(0,20);
     LS.clear();
     token=null; code=null; state=null;
     tokens={p1:null,p2:null}; vsLocal=false;
