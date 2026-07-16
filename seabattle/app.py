@@ -89,6 +89,7 @@ def _load_config() -> dict[str, Any]:
 
 
 _CFG = _load_config()
+SITE_TITLE = str(_CFG.get("site_title") or "Omove").strip() or "Omove"
 # Скрытый путь статистики — не светим в UI обычным пользователям
 STATS_PATH = str(_CFG.get("stats_path") or "m-k7p2qx9w").strip().strip("/")
 if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", STATS_PATH):
@@ -420,12 +421,16 @@ def server_error(_err):
 @app.get("/")
 def index():
     track_visit(rds, g.client_ip)
-    return render_template("index.html", games=GAMES)
+    return render_template("index.html", games=GAMES, site_title=SITE_TITLE)
 
 
 @app.get(f"/{STATS_PATH}")
 def stats_page():
-    return render_template("stats.html", stats_api=f"/{STATS_PATH}/api")
+    return render_template(
+        "stats.html",
+        stats_api=f"/{STATS_PATH}/api",
+        site_title=SITE_TITLE,
+    )
 
 
 @app.get(f"/{STATS_PATH}/api")
