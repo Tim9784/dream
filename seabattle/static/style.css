@@ -227,7 +227,12 @@ html[data-theme="light"] .game-card.active .game-card-mark{
   text-indent:.32em;
 }
 .share-row{display:flex;justify-content:center;margin:4px 0 8px}
-.share-row .btn{min-width:160px}
+.share-row .btn,.start-row .btn{min-width:160px}
+.start-row{display:flex;justify-content:center;margin:22px 0 6px}
+.wait-host{
+  text-align:center;margin:22px 0 4px;color:var(--soft);
+  font-size:1rem;font-weight:500;letter-spacing:.01em;
+}
 #shareHint{min-height:1.2em;margin:0 0 6px;font-size:.9rem}
 #shareHint.ok{color:var(--turn-text)}
 .hint{color:var(--soft);text-align:center;line-height:1.45}

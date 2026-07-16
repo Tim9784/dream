@@ -340,10 +340,17 @@ function applyState(s, opts={}){
     } else if(isHost){
       $('lobbyHint').textContent = s.message || 'Все на месте — нажми «Начать игру»';
     } else {
-      $('lobbyHint').textContent = s.message || 'Все на месте · ждём старта от организатора';
+      $('lobbyHint').textContent = s.message || 'Все на месте';
     }
     const startRow = $('startRow');
     if(startRow) startRow.classList.toggle('hidden', !(canStart && isHost));
+    const waitHost = $('waitHostHint');
+    if(waitHost){
+      waitHost.classList.toggle('hidden', !!isHost);
+      waitHost.textContent = left
+        ? 'Ждём организатора…'
+        : 'Ждём, пока организатор начнёт игру…';
+    }
     const lobbyErr = $('lobbyErr');
     if(lobbyErr && !lobbyErr.dataset.keep) lobbyErr.textContent = '';
     renderLobbyPlayers(s);
@@ -1081,6 +1088,8 @@ function goHome(msg){
   clearShareHint(true);
   const startRow = $('startRow');
   if(startRow) startRow.classList.add('hidden');
+  const waitHost = $('waitHostHint');
+  if(waitHost) waitHost.classList.add('hidden');
   const lobbyErr = $('lobbyErr');
   if(lobbyErr){ lobbyErr.textContent = ''; delete lobbyErr.dataset.keep; }
   show('home');
