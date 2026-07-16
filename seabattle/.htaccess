@@ -1,10 +1,8 @@
-PassengerEnabled On
-PassengerAppRoot /home/u549672/omove.ru/www
-PassengerBaseURI /
-PassengerPython /home/u549672/omove.ru/www/venv/bin/python
-PassengerAppType wsgi
-PassengerStartupFile passenger_wsgi.py
-
-# Статика напрямую через Apache, если Passenger не перехватит
 RewriteEngine On
-RewriteRule ^static/(.*)$ static/$1 [L]
+
+# статика и существующие файлы
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# API и страницы — в cgi-bin
+RewriteRule ^(.*)$ /cgi-bin/app.cgi/$1 [QSA,L]
