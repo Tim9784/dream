@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Лобби игр: морской бой, шашки, шахматы, крестики-нолики, нарды, дурак."""
+"""Лобби игр: морской бой, шашки, шахматы, крестики-нолики, нарды, дурак, блик."""
 from __future__ import annotations
 
 import json
@@ -206,7 +206,7 @@ def empty_slot(room: dict[str, Any]) -> str | None:
 
 def max_players_for(game_id: str, data: dict[str, Any] | None = None) -> int:
     data = data or {}
-    if game_id == "durak":
+    if game_id in ("durak", "blik"):
         try:
             n = int(data.get("players") or data.get("max_players") or 2)
         except (TypeError, ValueError):
@@ -243,7 +243,7 @@ def restart_game_room(room: dict[str, Any]) -> None:
     options: dict[str, Any] = {}
     if room["game"] == "seabattle":
         options["size"] = (room.get("state") or {}).get("size") or "medium"
-    if room["game"] == "durak":
+    if room["game"] in ("durak", "blik"):
         options["players"] = int(room.get("max_players") or 2)
         options["max_players"] = options["players"]
     room["state"] = mod.init_state(options)
@@ -491,8 +491,8 @@ def create_room():
     if game_id not in GAMES:
         return jsonify({"ok": False, "error": "Выбери игру"}), 400
     mod = GAMES[game_id]["module"]
-    name = normalize_name(data.get("name"), "Игрок 1")
-    name2 = normalize_name(data.get("name2"), "Игрок 2")
+    name = normalize_name(data.get("name"))
+    name2 = normalize_name(data.get("name2"), random_animal(name))
     vs_ai = bool(data.get("vs_ai"))
     vs_local = bool(data.get("vs_local"))
     if vs_ai and vs_local:
@@ -505,7 +505,7 @@ def create_room():
     options: dict[str, Any] = {}
     if game_id == "seabattle":
         options["size"] = size if size in ("small", "medium", "large") else "medium"
-    if game_id == "durak":
+    if game_id in ("durak", "blik"):
         options["players"] = max_p
         options["max_players"] = max_p
 

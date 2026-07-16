@@ -5,6 +5,7 @@ const GAME_ICONS = {
   chess: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 20h7"/><path d="M9.2 20c0-2.2.7-3.6 1.6-4.8.4-.5.7-1.1.7-1.8V11h1v2.4c0 .7.3 1.3.7 1.8.9 1.2 1.6 2.6 1.6 4.8"/><path d="M10 11c0-1.4.9-2.5 2-2.5s2 1.1 2 2.5"/><circle cx="12" cy="6.2" r="1.5"/><path d="M12 4.7V3.4"/></svg>`,
   backgammon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7 6.5 9.6 14 12 6.5 14.4 14 17 6.5"/><circle cx="9.6" cy="16.6" r="1.35" fill="currentColor" stroke="none"/><circle cx="14.4" cy="16.6" r="1.35" fill="currentColor" stroke="none"/></svg>`,
   durak: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="2.2"/><path d="M12 8.2c-.9-1.3-2.5-1.2-2.5.2 0 1.4 2.5 3.4 2.5 3.4s2.5-2 2.5-3.4c0-1.4-1.6-1.5-2.5-.2Z" fill="currentColor" stroke="none"/><path d="M9.2 17.8h5.6" stroke-linecap="round"/></svg>`,
+  blik: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="10" height="14" rx="2" transform="rotate(-8 9 12)"/><rect x="10" y="5" width="10" height="14" rx="2" transform="rotate(10 15 12)"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>`,
   hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
 };
 
@@ -28,6 +29,7 @@ const GAMES = {
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
   backgammon: {title:'Нарды', blurb:'Длинные нарды — все с одной головы'},
   durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
+  blik: {title:'Блик', blurb:'Сбрось карты по цвету или знаку — 2–4 игрока'},
   hangman: {title:'Виселица', blurb:'Отгадай слово по буквам — соло'},
 };
 
@@ -85,7 +87,12 @@ function openSetup(gameId){
   chosenGame = gameId || chosenGame;
   $('setupTitle').textContent = GAMES[chosenGame].title;
   $('seabattleOpts').classList.toggle('hidden', chosenGame!=='seabattle');
-  if($('durakOpts')) $('durakOpts').classList.toggle('hidden', chosenGame!=='durak');
+  if($('durakOpts')) $('durakOpts').classList.toggle('hidden', chosenGame!=='durak' && chosenGame!=='blik');
+  if($('playersOptsTitle')){
+    $('playersOptsTitle').textContent = chosenGame==='blik'
+      ? 'Игроков за столом (по сети)'
+      : 'Игроков за столом (по сети)';
+  }
   $('setupErr').textContent = '';
   setLocalNamesVisible(false);
   show('setup');
@@ -114,7 +121,7 @@ document.querySelectorAll('.size-btn').forEach(btn=>{
     }
     if(btn.dataset.players){
       chosenPlayers = parseInt(btn.dataset.players,10)||2;
-      document.querySelectorAll('#durakPlayersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
+      document.querySelectorAll('#playersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
     }
   };
 });
@@ -158,7 +165,7 @@ function playerName(el){ return (el.value.trim() || randomAnimal()); }
 
 function needsPrivacy(game){
   // экран «я за экраном» — морской бой и карты (скрытая рука)
-  return game==='seabattle' || game==='durak';
+  return game==='seabattle' || game==='durak' || game==='blik';
 }
 
 function desiredHotseatSlot(s){
@@ -433,6 +440,7 @@ function renderGame(s){
   if(s.game==='chess') return renderBoardGame(mount, s, 'chess');
   if(s.game==='backgammon') return renderBackgammon(mount, s);
   if(s.game==='durak') return renderDurak(mount, s);
+  if(s.game==='blik') return renderBlik(mount, s);
   if(s.game==='hangman') return renderHangman(mount, s);
 }
 
@@ -1060,6 +1068,156 @@ function renderDurak(mount, s){
   });
 }
 
+/* ===== Blik ===== */
+const BLIK_COLOR_CLASS = {c:'blik-c', t:'blik-t', a:'blik-a', v:'blik-v'};
+const BLIK_FACE = {S:'стоп', Z:'↻', D:'+2', WW:'★', WX:'★+4'};
+
+function blikCardMeta(code){
+  if(!code) return {cls:'blik-wild', label:'?', wild:true};
+  if(code==='WW') return {cls:'blik-wild', label:'★', wild:true};
+  if(code==='WX') return {cls:'blik-wild blik-wx', label:'★+4', wild:true};
+  const col = code[0], face = code[1];
+  return {
+    cls: BLIK_COLOR_CLASS[col] || 'blik-c',
+    label: BLIK_FACE[face] || face,
+    wild: false,
+    color: col,
+    face
+  };
+}
+
+function renderBlik(mount, s){
+  const gs = s.game_state||{};
+  const me = s.you;
+  const order = gs.order || [];
+  const others = order.filter(slot=>slot!==me);
+  const myTurn = s.phase==='playing' && s.turn===me;
+  const legal = gs.legal||[];
+  const playable = new Set(legal.filter(a=>a.type==='play').map(a=>a.card));
+  const wildColors = {};
+  legal.filter(a=>a.type==='play' && a.color).forEach(a=>{
+    if(!wildColors[a.card]) wildColors[a.card]=[];
+    wildColors[a.card].push(a.color);
+  });
+  const canDraw = legal.some(a=>a.type==='draw');
+  const canPass = legal.some(a=>a.type==='pass');
+  const playDrawn = legal.filter(a=>a.type==='play_drawn');
+  const colorActs = legal.filter(a=>a.type==='color');
+  const myHand = (gs.hands && me && gs.hands[me]) || [];
+  const top = blikCardMeta(gs.top);
+  const cur = gs.current_color || 'c';
+  const dir = (gs.direction||1) > 0 ? '→' : '←';
+  const labels = gs.color_labels || {c:'Коралл',t:'Бирюза',a:'Янтарь',v:'Фиолет'};
+
+  const othersHtml = others.map(slot=>{
+    const n = (gs.hand_counts && gs.hand_counts[slot]) || 0;
+    const nm = (s.players[slot]&&s.players[slot].name) || slot;
+    const turn = s.turn===slot ? ' · ходит' : '';
+    return `<div class="blik-opp">
+      <div class="blik-role">${nm} · ${n}${turn}</div>
+      <div class="blik-hand opp" data-backs="${slot}"></div>
+    </div>`;
+  }).join('');
+
+  mount.innerHTML = `
+    <div class="blik">
+      <div class="blik-meta">
+        <div>Цвет <span class="blik-chip ${BLIK_COLOR_CLASS[cur]||''}">${labels[cur]||cur}</span></div>
+        <div>Колода: <strong>${gs.deck_count||0}</strong></div>
+        <div>Ход ${dir}</div>
+      </div>
+      <div class="blik-others">${othersHtml || '<div class="hint">Нет соперников</div>'}</div>
+      <div class="blik-table">
+        <button type="button" class="bcard back blik-deck" id="blikDeck" ${canDraw?'':'disabled'} title="Взять карту"></button>
+        <div class="bcard ${top.cls}" id="blikTop"><span>${top.label}</span></div>
+      </div>
+      <div class="blik-actions" id="blikActions"></div>
+      <div class="blik-me">
+        <div class="blik-role">Ты${myTurn?' · твой ход':''}${gs.drawn?' · можно сходить взятой или пас':''}</div>
+        <div class="blik-hand me" id="blikHand"></div>
+      </div>
+    </div>`;
+
+  mount.querySelectorAll('[data-backs]').forEach(box=>{
+    const slot = box.getAttribute('data-backs');
+    const n = (gs.hand_counts && gs.hand_counts[slot]) || 0;
+    for(let i=0;i<Math.min(n,8);i++){
+      const back = document.createElement('div');
+      back.className = 'bcard back';
+      box.appendChild(back);
+    }
+    if(n>8){
+      const m=document.createElement('div'); m.className='checker-count'; m.textContent='×'+n; box.appendChild(m);
+    }
+  });
+
+  const act = $('blikActions');
+  const pickColorThen = (fn)=>{
+    act.innerHTML = '';
+    const tip = document.createElement('div');
+    tip.className = 'hint'; tip.textContent = 'Выбери цвет';
+    act.appendChild(tip);
+    ['c','t','a','v'].forEach(col=>{
+      const b = document.createElement('button');
+      b.type='button'; b.className='btn blik-color-btn '+ (BLIK_COLOR_CLASS[col]||'');
+      b.textContent = labels[col]||col;
+      b.onclick = ()=>fn(col);
+      act.appendChild(b);
+    });
+  };
+
+  if(colorActs.length){
+    pickColorThen(col=>doAction({type:'color', color:col}));
+  } else if(playDrawn.length){
+    const b = document.createElement('button');
+    b.type='button'; b.className='btn';
+    const drawnMeta = blikCardMeta(gs.drawn);
+    b.textContent = 'Сходить взятой ('+drawnMeta.label+')';
+    b.onclick = ()=>{
+      if(gs.drawn==='WW' || gs.drawn==='WX') pickColorThen(col=>doAction({type:'play_drawn', color:col}));
+      else doAction({type:'play_drawn'});
+    };
+    act.appendChild(b);
+  }
+  if(canPass){
+    const b = document.createElement('button');
+    b.type='button'; b.className='btn ghost'; b.textContent='Пас';
+    b.onclick = ()=>doAction({type:'pass'});
+    act.appendChild(b);
+  }
+  if(canDraw){
+    const deckBtn = $('blikDeck');
+    if(deckBtn) deckBtn.onclick = ()=>doAction({type:'draw'});
+    const b = document.createElement('button');
+    b.type='button'; b.className='btn ghost'; b.textContent='Взять карту';
+    b.onclick = ()=>doAction({type:'draw'});
+    act.appendChild(b);
+  }
+
+  const handBox = $('blikHand');
+  myHand.forEach(code=>{
+    if(!code) return;
+    const meta = blikCardMeta(code);
+    const c = document.createElement('button');
+    c.type='button';
+    c.className = 'bcard '+meta.cls;
+    c.innerHTML = `<span>${meta.label}</span>`;
+    const ok = myTurn && playable.has(code) && !gs.drawn && !colorActs.length;
+    if(!ok) c.disabled = true;
+    else c.style.cursor = 'pointer';
+    c.onclick = ()=>{
+      if(!ok) return;
+      if(meta.wild){
+        const cols = wildColors[code] || ['c','t','a','v'];
+        pickColorThen(col=>doAction({type:'play', card:code, color:col}));
+      } else {
+        doAction({type:'play', card:code});
+      }
+    };
+    handBox.appendChild(c);
+  });
+}
+
 /* ===== room actions ===== */
 async function leaveGame(){
   stopPoll();
@@ -1109,7 +1267,7 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
     const body={name, game:chosenGame, vs_ai:!!vsAi, vs_local:!!vsLocalMode};
     if(vsLocalMode) body.name2 = name2;
     if(chosenGame==='seabattle') body.size=chosenBoard;
-    if(chosenGame==='durak' && !vsAi && !vsLocalMode) body.players = chosenPlayers;
+    if((chosenGame==='durak' || chosenGame==='blik') && !vsAi && !vsLocalMode) body.players = chosenPlayers;
     lastSettings = {game:chosenGame, vsAi:!!vsAi, vsLocal:!!vsLocalMode, name, name2, size:chosenBoard, players:chosenPlayers};
     const data=await api('/api/room/create',{method:'POST', body:JSON.stringify(body)});
     code=data.code;
@@ -1213,7 +1371,7 @@ $('btnReplay').onclick = async ()=>{
   if($('name') && lastSettings.name) $('name').value = lastSettings.name;
   if($('name2') && lastSettings.name2) $('name2').value = lastSettings.name2;
   document.querySelectorAll('#sizePick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
-  document.querySelectorAll('#durakPlayersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
+  document.querySelectorAll('#playersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
   if(lastSettings.vsLocal){
     setLocalNamesVisible(true);
     await startGame({vsLocalMode:true});
