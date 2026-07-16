@@ -108,6 +108,9 @@ class FileStore:
     def _path(self, key: str) -> str:
         return os.path.join(self.root, _safe_name(key) + ".json")
 
+    def _lock_path(self, key: str) -> str:
+        return self._path(key) + ".lock"
+
     def _lock_file(self, fh, exclusive: bool = True) -> None:
         if fcntl is None:
             return
@@ -127,27 +130,47 @@ class FileStore:
         exp = float(rec.get("exp") or 0)
         return bool(exp and exp <= time.time())
 
-    def _read_record(self, path: str) -> dict[str, Any] | None:
+    def _parse_record(self, raw: str) -> dict[str, Any] | None:
+        if not raw:
+            return None
+        try:
+            rec = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(rec, dict):
+            return None
+        if self._expired(rec):
+            return None
+        return rec
+
+    def _read_record_unlocked(self, path: str) -> dict[str, Any] | None:
         if not os.path.exists(path):
             return None
         try:
             with open(path, "r", encoding="utf-8") as fh:
-                self._lock_file(fh, exclusive=False)
-                try:
+                raw = fh.read()
+            rec = self._parse_record(raw)
+            if rec is None and raw:
+                # битый/пустой после гонки — ещё раз
+                time.sleep(0.02)
+                with open(path, "r", encoding="utf-8") as fh:
                     raw = fh.read()
-                finally:
-                    self._unlock_file(fh)
-            if not raw:
-                return None
-            rec = json.loads(raw)
-            if self._expired(rec):
+                rec = self._parse_record(raw)
+            if rec is None and os.path.exists(path):
+                # протухший ключ
                 try:
-                    os.remove(path)
+                    if not raw or self._parse_record(raw) is None:
+                        # удаляем только явно протухшие
+                        try:
+                            probe = json.loads(raw) if raw else None
+                        except json.JSONDecodeError:
+                            probe = None
+                        if isinstance(probe, dict) and self._expired(probe):
+                            os.remove(path)
                 except OSError:
                     pass
-                return None
             return rec
-        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        except (OSError, ValueError, TypeError):
             return None
 
     def _atomic_write(self, path: str, rec: dict[str, Any]) -> None:
@@ -172,33 +195,55 @@ class FileStore:
 
     def get(self, key: str) -> Any:
         with self._thread:
-            rec = self._read_record(self._path(key))
-            return None if rec is None else rec.get("v")
+            path = self._path(key)
+            lock_path = self._lock_path(key)
+            os.makedirs(self.root, exist_ok=True)
+            with open(lock_path, "a+", encoding="utf-8") as lf:
+                self._lock_file(lf, exclusive=False)
+                try:
+                    rec = self._read_record_unlocked(path)
+                    return None if rec is None else rec.get("v")
+                finally:
+                    self._unlock_file(lf)
 
     def setex(self, key: str, ttl: int, value: Any) -> bool:
         with self._thread:
-            rec = {
-                "k": key,
-                "v": value,
-                "exp": time.time() + max(1, int(ttl)),
-            }
-            self._atomic_write(self._path(key), rec)
-            return True
+            path = self._path(key)
+            lock_path = self._lock_path(key)
+            os.makedirs(self.root, exist_ok=True)
+            with open(lock_path, "a+", encoding="utf-8") as lf:
+                self._lock_file(lf, exclusive=True)
+                try:
+                    rec = {
+                        "k": key,
+                        "v": value,
+                        "exp": time.time() + max(1, int(ttl)),
+                    }
+                    self._atomic_write(path, rec)
+                    return True
+                finally:
+                    self._unlock_file(lf)
 
     def delete(self, key: str) -> int:
         with self._thread:
             path = self._path(key)
-            if not os.path.exists(path):
-                return 0
-            try:
-                os.remove(path)
-                return 1
-            except OSError:
-                return 0
+            lock_path = self._lock_path(key)
+            os.makedirs(self.root, exist_ok=True)
+            with open(lock_path, "a+", encoding="utf-8") as lf:
+                self._lock_file(lf, exclusive=True)
+                try:
+                    if not os.path.exists(path):
+                        return 0
+                    try:
+                        os.remove(path)
+                        return 1
+                    except OSError:
+                        return 0
+                finally:
+                    self._unlock_file(lf)
 
     def exists(self, key: str) -> int:
-        with self._thread:
-            return 1 if self._read_record(self._path(key)) is not None else 0
+        return 1 if self.get(key) is not None else 0
 
     def incr(self, key: str) -> int:
         with self._thread:
@@ -236,13 +281,20 @@ class FileStore:
     def expire(self, key: str, ttl: int) -> bool:
         with self._thread:
             path = self._path(key)
-            rec = self._read_record(path)
-            if rec is None:
-                return False
-            rec["k"] = key
-            rec["exp"] = time.time() + max(1, int(ttl))
-            self._atomic_write(path, rec)
-            return True
+            lock_path = self._lock_path(key)
+            os.makedirs(self.root, exist_ok=True)
+            with open(lock_path, "a+", encoding="utf-8") as lf:
+                self._lock_file(lf, exclusive=True)
+                try:
+                    rec = self._read_record_unlocked(path)
+                    if rec is None:
+                        return False
+                    rec["k"] = key
+                    rec["exp"] = time.time() + max(1, int(ttl))
+                    self._atomic_write(path, rec)
+                    return True
+                finally:
+                    self._unlock_file(lf)
 
     def scan_iter(self, match: str = "*", count: int = 200) -> Iterator[str]:
         prefix = match[:-1] if match.endswith("*") else None
@@ -252,10 +304,10 @@ class FileStore:
             return
         yielded = 0
         for name in names:
-            if not name.endswith(".json") or name.startswith("."):
+            if not name.endswith(".json") or name.startswith(".") or name.endswith(".lock"):
                 continue
             path = os.path.join(self.root, name)
-            rec = self._read_record(path)
+            rec = self._read_record_unlocked(path)
             if rec is None:
                 continue
             key = rec.get("k")

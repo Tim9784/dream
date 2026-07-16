@@ -155,7 +155,15 @@ def load_room(code: str) -> dict[str, Any] | None:
     if not code.isdigit() or len(code) != CODE_LEN:
         return None
     raw = rds.get(room_key(code))
-    return json.loads(raw) if raw else None
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, dict):
+        return raw
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def delete_room(code: str) -> None:
@@ -584,6 +592,7 @@ def join_room():
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
     code = str(data.get("code", "")).strip()
     name = normalize_name(data.get("name"))
+    token_in = str(data.get("token") or "")
     if not code.isdigit() or len(code) != CODE_LEN:
         return jsonify({"ok": False, "error": "Код — 6 цифр"}), 400
     room = load_room(code)
@@ -593,15 +602,39 @@ def join_room():
         return jsonify({"ok": False, "error": "Это партия с компьютером"}), 409
     if room.get("vs_local"):
         return jsonify({"ok": False, "error": "Это локальная партия на одном устройстве"}), 409
+
+    # Переподключение в уже идущую партию по своему токену
+    if valid_token(token_in):
+        seat = player_slot(room, token_in)
+        if seat:
+            player = room["players"].get(seat) or {}
+            player["connected"] = True
+            player.pop("disconnected_at", None)
+            if name:
+                player["name"] = name
+            room["players"][seat] = player
+            save_room(code, room)
+            return jsonify({
+                "ok": True,
+                "code": code,
+                "token": token_in,
+                "slot": seat,
+                "reconnected": True,
+                "state": public_state(room, seat),
+            })
+
     if room["phase"] != "lobby":
-        return jsonify({"ok": False, "error": "Игра уже началась"}), 409
+        return jsonify({
+            "ok": False,
+            "error": "Игра уже началась. Открой ту же вкладку или войди с того же устройства — сессия восстановится сама.",
+        }), 409
 
     seat = empty_slot(room)
     if not seat:
         return jsonify({"ok": False, "error": "Комната уже заполнена"}), 409
 
     token = secrets.token_hex(16)
-    room["players"][seat] = {"token": token, "name": name, "ai": False}
+    room["players"][seat] = {"token": token, "name": name, "ai": False, "connected": True}
     filled = len(filled_slots(room))
     max_p = int(room.get("max_players") or 2)
     names = [
@@ -659,7 +692,11 @@ def get_room(code: str):
     ip = g.client_ip
     if not rate_limit(f"poll:{ip}", RL_POLL[0], RL_POLL[1]):
         return too_many()
+    # короткий повтор при гонке чтения/записи на FileStore
     room = load_room(code)
+    if not room:
+        time.sleep(0.05)
+        room = load_room(code)
     if not room:
         return jsonify({"ok": False, "error": "Комната не найдена"}), 404
     # если vs AI и почему-то не доиграл ход — догоняем
@@ -675,6 +712,12 @@ def get_room(code: str):
             save_room(code, room)
     token = str(request.args.get("token", ""))
     slot = player_slot(room, token) if token else None
+    # обновляем TTL комнаты, чтобы длинная партия не протухла
+    if slot:
+        try:
+            rds.expire(room_key(code), ROOM_TTL)
+        except RedisError:
+            save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
 
 

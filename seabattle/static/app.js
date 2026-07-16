@@ -136,15 +136,40 @@ async function api(path, opts={}){
   return data;
 }
 
+let roomMisses = 0;
+
 function startPoll(){
   stopPoll();
+  roomMisses = 0;
   pollTimer = setInterval(async ()=>{
     if(!code||!token) return;
     try{
       const data = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+      roomMisses = 0;
       applyState(data.state);
     }catch(e){
-      if(String(e.message||'').includes('не найдена')) goHome('Комната закрыта');
+      const msg = String(e.message||'');
+      if(msg.includes('не найдена') || msg.includes('Не найдена')){
+        roomMisses += 1;
+        // не выкидываем сразу — бывает гонка чтения на хостинге
+        if(roomMisses >= 4){
+          // пробуем один раз переподключиться по токену, не очищая сессию заранее
+          try{
+            const saved = LS.get();
+            const joinName = (saved && saved.name) || ($('name') && $('name').value) || randomAnimal();
+            const data = await api('/api/room/join', {
+              method:'POST',
+              body: JSON.stringify({ name: joinName, code, token })
+            });
+            token = data.token; code = data.code;
+            roomMisses = 0;
+            LS.set({ ...(saved||{}), token, code, name: joinName, game: (data.state&&data.state.game)||chosenGame });
+            applyState(data.state);
+            return;
+          }catch(_){}
+          goHome('Комната закрыта');
+        }
+      }
     }
   }, 900);
 }
@@ -1337,17 +1362,22 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
 }
 
 async function joinRoomByCode(roomCode, joinName){
-  const data=await api('/api/room/join',{method:'POST', body:JSON.stringify({
-    name: joinName,
-    code: String(roomCode||'').replace(/\D/g,'').slice(0,6)
-  })});
+  const clean = String(roomCode||'').replace(/\D/g,'').slice(0,6);
+  const saved = LS.get();
+  const resumeToken = (saved && saved.code === clean && saved.token) ? saved.token : (code===clean && token ? token : null);
+  const body = { name: joinName, code: clean };
+  if(resumeToken) body.token = resumeToken;
+  const data=await api('/api/room/join',{method:'POST', body:JSON.stringify(body)});
   token=data.token; code=data.code;
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=data.slot||'p2';
   chosenGame = (data.state && data.state.game) || chosenGame;
   lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:randomAnimal(joinName), size:chosenBoard};
   LS.set({token,code,name:joinName, game:chosenGame});
-  SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
+  if(!data.reconnected){
+    SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
+  }
   clearShareHint(true);
+  roomMisses = 0;
   applyState(data.state); startPoll();
   return data;
 }
@@ -1540,5 +1570,14 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   try{
     const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
     applyState(data.state); startPoll();
-  }catch{ LS.clear(); }
+  }catch(e){
+    // комната могла кратко не прочитаться — пробуем явный rejoin по токену
+    try{
+      await joinRoomByCode(saved.code, saved.name || playerName($('name')));
+    }catch(_){
+      // сессию оставляем: пользователь может нажать «Войти» с тем же кодом
+      if($('joinCode')) $('joinCode').value = saved.code || '';
+      if($('homeErr')) $('homeErr').textContent = 'Не удалось восстановить партию. Нажми игру → Войти с тем же кодом.';
+    }
+  }
 })();
