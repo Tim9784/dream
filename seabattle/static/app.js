@@ -1,3 +1,13 @@
+const GAME_ICONS = {
+  seabattle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16.5c1.8-1.2 3.4-1.8 5-.8 1.8 1.1 3.2 1.1 5 0 1.6-1 3.2-.4 5 .8"/><path d="M5 13.5h14l-1.2-3.2a2 2 0 0 0-1.9-1.3H8.1a2 2 0 0 0-1.9 1.3L5 13.5Z"/><path d="M10 9V7.2a1.2 1.2 0 0 1 1.2-1.2h1.6A1.2 1.2 0 0 1 14 7.2V9"/><circle cx="8.5" cy="11.2" r=".7" fill="currentColor" stroke="none"/><circle cx="12" cy="11.2" r=".7" fill="currentColor" stroke="none"/><circle cx="15.5" cy="11.2" r=".7" fill="currentColor" stroke="none"/></svg>`,
+  tictactoe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M9 4v16M15 4v16M4 9h16M4 15h16"/><path d="M5.8 5.8l2.6 2.6M8.4 5.8L5.8 8.4" stroke-width="1.9"/><circle cx="18" cy="18" r="2.1"/></svg>`,
+  checkers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="13.2" r="6.2"/><ellipse cx="12" cy="9.2" rx="5.2" ry="2.1"/><path d="M6.8 9.2v4M17.2 9.2v4" stroke-linecap="round"/></svg>`,
+  chess: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 20h7"/><path d="M9.2 20c0-2.2.7-3.6 1.6-4.8.4-.5.7-1.1.7-1.8V11h1v2.4c0 .7.3 1.3.7 1.8.9 1.2 1.6 2.6 1.6 4.8"/><path d="M10 11c0-1.4.9-2.5 2-2.5s2 1.1 2 2.5"/><circle cx="12" cy="6.2" r="1.5"/><path d="M12 4.7V3.4"/></svg>`,
+  backgammon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M7 6.5 9.6 14 12 6.5 14.4 14 17 6.5"/><circle cx="9.6" cy="16.6" r="1.35" fill="currentColor" stroke="none"/><circle cx="14.4" cy="16.6" r="1.35" fill="currentColor" stroke="none"/></svg>`,
+  durak: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="2.2"/><path d="M12 8.2c-.9-1.3-2.5-1.2-2.5.2 0 1.4 2.5 3.4 2.5 3.4s2.5-2 2.5-3.4c0-1.4-1.6-1.5-2.5-.2Z" fill="currentColor" stroke="none"/><path d="M9.2 17.8h5.6" stroke-linecap="round"/></svg>`,
+  hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
+};
+
 const GAMES = {
   seabattle: {title:'Морской бой', blurb:'Расставь корабли и потопи флот'},
   tictactoe: {title:'Крестики-нолики', blurb:'Классика 3×3'},
@@ -75,8 +85,8 @@ function renderGameCards(){
     const b = document.createElement('button');
     b.type='button';
     b.className = 'game-card'+(chosenGame===id?' active':'');
-    const mark = (meta.title || '?').charAt(0);
-    b.innerHTML = `<span class="game-card-mark" aria-hidden="true">${mark}</span><span class="game-card-body"><strong>${meta.title}</strong><small>${meta.blurb}</small></span>`;
+    const icon = GAME_ICONS[id] || '';
+    b.innerHTML = `<span class="game-card-mark" aria-hidden="true">${icon}</span><span class="game-card-body"><strong>${meta.title}</strong><small>${meta.blurb}</small></span>`;
     b.onclick = ()=>{ chosenGame = id; openSetup(id); };
     box.appendChild(b);
   });
