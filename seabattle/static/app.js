@@ -305,6 +305,9 @@ function applyState(s, opts={}){
     show('lobby');
     $('lobbyGame').textContent = s.game_title;
     $('codeView').textContent = s.code;
+    if($('shareHint') && $('shareHint').textContent && !$('shareHint').classList.contains('ok')){
+      $('shareHint').textContent = '';
+    }
     const need = s.max_players || 2;
     const have = s.players_count || Object.values(s.players||{}).filter(Boolean).length;
     const left = Math.max(0, need - have);
@@ -1146,7 +1149,88 @@ $('btnReplay').onclick = async ()=>{
 $('btnExitLobby').onclick=()=>leaveGame();
 $('btnExitPlay').onclick=()=>leaveGame();
 
-(async function resume(){
+function inviteUrl(roomCode){
+  const c = String(roomCode||code||'').replace(/\D/g,'').slice(0,6);
+  const base = `${location.origin}${location.pathname || '/'}`;
+  const u = new URL(base, location.href);
+  u.searchParams.set('join', c);
+  return u.toString();
+}
+
+function readJoinCodeFromUrl(){
+  try{
+    const u = new URL(location.href);
+    let c = (u.searchParams.get('join')||'').replace(/\D/g,'').slice(0,6);
+    if(!c && /^\/?join\/(\d{4,6})\/?$/i.test(u.pathname||'')){
+      c = RegExp.$1;
+    }
+    if(c.length===6){
+      u.searchParams.delete('join');
+      const path = (u.pathname||'/').replace(/\/join\/\d{4,6}\/?$/i,'/') || '/';
+      history.replaceState({}, '', path + (u.search||'') + (u.hash||''));
+      return c;
+    }
+  }catch(_){}
+  return '';
+}
+
+async function copyText(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly','');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+async function shareInvite(){
+  const hint = $('shareHint');
+  const roomCode = String(code || ($('codeView')&&$('codeView').textContent) || '').replace(/\D/g,'').slice(0,6);
+  if(!roomCode || roomCode.length!==6){
+    if(hint){ hint.classList.remove('ok'); hint.textContent = 'Код ещё не готов'; }
+    return;
+  }
+  const url = inviteUrl(roomCode);
+  const title = (state && state.game_title) || (GAMES[chosenGame]&&GAMES[chosenGame].title) || 'Omove.ru';
+  const text = `Давай сыграем в «${title}» на Omove.ru. Код: ${roomCode}`;
+  if(hint){ hint.classList.remove('ok'); hint.textContent = ''; }
+  try{
+    if(navigator.share){
+      await navigator.share({ title: 'Omove.ru', text, url });
+      if(hint){ hint.classList.add('ok'); hint.textContent = 'Отправлено'; }
+      return;
+    }
+  }catch(e){
+    if(e && e.name==='AbortError') return;
+  }
+  try{
+    await copyText(url);
+    if(hint){ hint.classList.add('ok'); hint.textContent = 'Ссылка скопирована'; }
+  }catch(_){
+    if(hint){ hint.classList.remove('ok'); hint.textContent = url; }
+  }
+}
+
+if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
+
+(async function boot(){
+  const pendingJoin = readJoinCodeFromUrl();
+  if(pendingJoin){
+    LS.clear();
+    token=null; code=null; state=null;
+    if($('joinCode')) $('joinCode').value = pendingJoin;
+    openSetup(chosenGame || 'seabattle');
+    if($('setupErr')) $('setupErr').textContent = 'Введи имя и нажми «Войти» — код уже подставлен';
+    return;
+  }
+
   const saved=LS.get();
   if(!saved||!saved.code) return;
   if(saved.vs_local && saved.tokens && saved.tokens.p1 && saved.tokens.p2){

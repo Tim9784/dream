@@ -223,9 +223,13 @@ html[data-theme="light"] .game-card.active .game-card-mark{
 .size-btn small{color:var(--soft)}
 .code-big{
   font-family:'Syne',sans-serif;font-size:clamp(2.2rem,8vw,3.5rem);font-weight:800;
-  letter-spacing:.32em;text-align:center;padding:14px 0 10px;color:var(--foam);
+  letter-spacing:.32em;text-align:center;padding:14px 0 6px;color:var(--foam);
   text-indent:.32em;
 }
+.share-row{display:flex;justify-content:center;margin:4px 0 8px}
+.share-row .btn{min-width:160px}
+#shareHint{min-height:1.2em;margin:0 0 6px;font-size:.9rem}
+#shareHint.ok{color:var(--turn-text)}
 .hint{color:var(--soft);text-align:center;line-height:1.45}
 .lobby-players{
   margin-top:16px;padding:14px;border-radius:16px;
