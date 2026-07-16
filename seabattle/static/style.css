@@ -444,3 +444,36 @@ html[data-theme="light"] .handover{background:rgba(15,39,64,.05)}
   .dcard{width:52px;height:74px;font-size:.95rem}
   .dpair{width:68px;height:90px}
 }
+
+/* stats */
+.stats-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;
+}
+.stat-card{
+  padding:14px 12px;border-radius:14px;border:1px solid var(--line);background:var(--chip);
+  text-align:center;
+}
+.stat-val{
+  font-family:'Space Grotesk',sans-serif;font-size:1.7rem;font-weight:700;color:var(--foam);line-height:1.1;
+}
+.stat-lbl{color:var(--soft);font-size:.85rem;margin-top:6px}
+.stats-modes,.stats-games{display:grid;gap:12px}
+.mode-row,.game-row{display:grid;gap:6px}
+.mode-top,.game-top{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.mode-bar{
+  height:8px;border-radius:999px;background:rgba(125,211,252,.12);overflow:hidden;
+}
+.mode-bar span{
+  display:block;height:100%;border-radius:999px;
+  background:linear-gradient(90deg,var(--accent),#67e8f9);
+}
+.game-sub{color:var(--soft);font-size:.8rem}
+.stats-chart{
+  display:flex;align-items:flex-end;gap:6px;min-height:140px;padding-top:8px;
+}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+.bar-col .bar{
+  width:100%;max-width:28px;border-radius:8px 8px 4px 4px;
+  background:linear-gradient(180deg,#67e8f9,var(--accent));
+}
+.bar-d{color:var(--soft);font-size:.7rem}

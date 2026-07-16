@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Статистика — Игровое лобби</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=20260716s">
+<script>
+(function(){
+  try{
+    var t=localStorage.getItem('seabattle-theme');
+    if(t!=='light'&&t!=='dark'){
+      t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
+})();
+</script>
+</head>
+<body>
+<div class="wrap">
+  <div class="header-row">
+    <div>
+      <h1 class="brand">Статистика</h1>
+      <p class="tag">Метрики сайта · обновляется при открытии</p>
+    </div>
+    <a class="theme-btn" href="/" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center">В лобби</a>
+  </div>
+
+  <section class="panel">
+    <div class="stats-grid" id="totals">
+      <div class="stat-card"><div class="stat-val" id="tVisits">—</div><div class="stat-lbl">Визиты</div></div>
+      <div class="stat-card"><div class="stat-val" id="tUniques">—</div><div class="stat-lbl">Уники</div></div>
+      <div class="stat-card"><div class="stat-val" id="tRooms">—</div><div class="stat-lbl">Партии</div></div>
+      <div class="stat-card"><div class="stat-val" id="tJoins">—</div><div class="stat-lbl">Входы по коду</div></div>
+      <div class="stat-card"><div class="stat-val" id="tFinished">—</div><div class="stat-lbl">Сыграно до конца</div></div>
+      <div class="stat-card"><div class="stat-val" id="tActive">—</div><div class="stat-lbl">Сейчас активны</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">Режимы</h2>
+    <div class="stats-modes" id="modes"></div>
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">Игры</h2>
+    <div class="stats-games" id="games"></div>
+  </section>
+
+  <section class="panel">
+    <h2 class="section-title">14 дней</h2>
+    <div class="stats-chart" id="chart" aria-label="График визитов"></div>
+    <div class="hint" id="chartHint" style="margin-top:10px"></div>
+  </section>
+
+  <p class="footer" id="updated">…</p>
+</div>
+<script>
+async function loadStats(){
+  const res = await fetch('/api/stats');
+  const d = await res.json();
+  if(!d.ok) throw new Error('stats');
+  const t = d.totals || {};
+  $('tVisits').textContent = t.visits|0;
+  $('tUniques').textContent = t.uniques|0;
+  $('tRooms').textContent = t.rooms|0;
+  $('tJoins').textContent = t.joins|0;
+  $('tFinished').textContent = t.finished|0;
+  $('tActive').textContent = t.active_rooms|0;
+
+  const modes = d.modes || {};
+  const modeLabels = {ai:'С компьютером', local:'Вдвоём здесь', online:'По сети'};
+  const modeTotal = (modes.ai|0)+(modes.local|0)+(modes.online|0) || 1;
+  $('modes').innerHTML = Object.keys(modeLabels).map(k=>{
+    const n = modes[k]|0;
+    const pct = Math.round(n*100/modeTotal);
+    return `<div class="mode-row"><div class="mode-top"><span>${modeLabels[k]}</span><strong>${n}</strong></div><div class="mode-bar"><span style="width:${pct}%"></span></div></div>`;
+  }).join('');
+
+  const maxG = Math.max(1, ...((d.games||[]).map(g=>g.rooms|0)));
+  $('games').innerHTML = (d.games||[]).map(g=>{
+    const pct = Math.round((g.rooms|0)*100/maxG);
+    return `<div class="game-row">
+      <div class="game-top"><span>${esc(g.title)}</span><strong>${g.rooms|0}</strong></div>
+      <div class="mode-bar"><span style="width:${pct}%"></span></div>
+      <div class="game-sub">сегодня ${g.today|0} · до конца ${g.finished|0}</div>
+    </div>`;
+  }).join('') || '<div class="hint">Пока нет данных</div>';
+
+  const days = d.days || [];
+  const maxV = Math.max(1, ...days.map(x=>x.visits|0));
+  $('chart').innerHTML = days.map(x=>{
+    const h = Math.max(4, Math.round(((x.visits|0)/maxV)*120));
+    return `<div class="bar-col" title="${x.date}: ${x.visits|0} визитов, ${x.rooms|0} партий"><div class="bar" style="height:${h}px"></div><div class="bar-d">${x.date.slice(8)}</div></div>`;
+  }).join('');
+  const today = days[days.length-1] || {};
+  $('chartHint').textContent = `Сегодня (${d.today}): ${today.visits|0} визитов · ${today.uniques|0} уников · ${today.rooms|0} партий`;
+  const u = new Date((d.updated_at||0)*1000);
+  $('updated').textContent = 'Обновлено: ' + u.toLocaleString('ru-RU');
+}
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+loadStats().catch(()=>{ $('updated').textContent = 'Не удалось загрузить статистику'; });
+</script>
+</body>
+</html>

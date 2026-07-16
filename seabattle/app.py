@@ -15,6 +15,8 @@ from flask import Flask, g, jsonify, render_template, request
 
 from games import GAMES, get_game
 from memory_store import FileStore, MemoryStore
+from stats import snapshot as stats_snapshot
+from stats import track_finished, track_join, track_room_created, track_visit
 
 ROOM_TTL = 3 * 60 * 60
 CODE_LEN = 6
@@ -396,7 +398,18 @@ def server_error(_err):
 
 @app.get("/")
 def index():
+    track_visit(rds, g.client_ip)
     return render_template("index.html", games=GAMES)
+
+
+@app.get("/stats")
+def stats_page():
+    return render_template("stats.html")
+
+
+@app.get("/api/stats")
+def api_stats():
+    return jsonify(stats_snapshot(rds, GAMES, count_rooms))
 
 
 @app.get("/api/games")
@@ -493,6 +506,7 @@ def create_room():
         start_game_room(room)
 
     save_room(code, room)
+    track_room_created(rds, game_id, vs_ai, vs_local)
     payload = {
         "ok": True,
         "code": code,
@@ -547,6 +561,7 @@ def join_room():
     if seats_ready(room):
         start_game_room(room)
     save_room(code, room)
+    track_join(rds)
     return jsonify({
         "ok": True,
         "code": code,
@@ -566,10 +581,14 @@ def get_room(code: str):
         return jsonify({"ok": False, "error": "Комната не найдена"}), 404
     # если vs AI и почему-то не доиграл ход — догоняем
     if room.get("vs_ai"):
+        was_done = room.get("phase") == "done"
         before = json.dumps(room, sort_keys=True, default=str)
         run_ai_turns(room)
         after = json.dumps(room, sort_keys=True, default=str)
-        if before != after:
+        if (not was_done) and room.get("phase") == "done" and not room.get("stats_finished"):
+            room["stats_finished"] = True
+            track_finished(rds, room.get("game") or "")
+        if before != after or room.get("stats_finished"):
             save_room(code, room)
     token = str(request.args.get("token", ""))
     slot = player_slot(room, token) if token else None
@@ -597,11 +616,15 @@ def room_action(code: str):
         return jsonify({"ok": False, "error": "Ждём игроков"}), 409
 
     mod = get_game(room["game"])
+    was_done = room.get("phase") == "done"
     ok, err = mod.apply_action(room, slot, data)
     if not ok:
         return jsonify({"ok": False, "error": err}), 400
 
     maybe_schedule_ai(room)
+    if (not was_done) and room.get("phase") == "done" and not room.get("stats_finished"):
+        room["stats_finished"] = True
+        track_finished(rds, room.get("game") or "")
     save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
 
@@ -685,6 +708,9 @@ def leave_room(code: str):
         else:
             room["winner"] = None
             room["message"] = f"{leaver} вышел. Партия окончена"
+        if not room.get("stats_finished"):
+            room["stats_finished"] = True
+            track_finished(rds, room.get("game") or "")
         save_room(code, room)
         return jsonify({"ok": True, "left": True})
 
