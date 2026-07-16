@@ -1,6 +1,6 @@
 """Game engines for lobby multiplayer."""
 
-from . import backgammon, checkers, chess, durak, seabattle, tictactoe
+from . import backgammon, checkers, chess, durak, seabattle, tictactoe, hangman
 
 GAMES = {
     "seabattle": {
@@ -32,6 +32,11 @@ GAMES = {
         "title": "Дурак",
         "blurb": "Подкидной на 2–4 игрока, колода 36",
         "module": durak,
+    },
+    "hangman": {
+        "title": "Виселица",
+        "blurb": "Отгадай слово по буквам — соло",
+        "module": hangman,
     },
 }
 

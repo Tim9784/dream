@@ -5,6 +5,7 @@ const GAMES = {
   chess: {title:'Шахматы', blurb:'Партия на двоих'},
   backgammon: {title:'Нарды', blurb:'Длинные нарды — все с одной головы'},
   durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
+  hangman: {title:'Виселица', blurb:'Отгадай слово по буквам — соло'},
 };
 
 const PRESETS = {
@@ -379,6 +380,7 @@ function renderGame(s){
   if(s.game==='chess') return renderBoardGame(mount, s, 'chess');
   if(s.game==='backgammon') return renderBackgammon(mount, s);
   if(s.game==='durak') return renderDurak(mount, s);
+  if(s.game==='hangman') return renderHangman(mount, s);
 }
 
 /* ===== Sea battle ===== */
@@ -553,6 +555,50 @@ function renderTTT(mount, s){
     b.disabled = !myTurn || !!v;
     b.onclick=()=>doAction({cell:i});
     box.appendChild(b);
+  });
+}
+
+/* ===== Hangman (Виселица) ===== */
+function renderHangman(mount, s){
+  const gs = s.game_state||{};
+  const masked = gs.masked || '';
+  const wrong = gs.wrong|0, max = gs.max_wrong|0;
+  const guessed = new Set(gs.guessed||[]);
+  // простая «виселица» — SVG по количеству ошибок
+  const parts = [];
+  // опора
+  parts.push(`<line x1="10" y1="140" x2="120" y2="140"/>`);
+  parts.push(`<line x1="30" y1="20" x2="30" y2="140"/>`);
+  parts.push(`<line x1="30" y1="20" x2="90" y2="20"/>`);
+  parts.push(`<line x1="90" y1="20" x2="90" y2="38"/>`);
+  if(wrong>0) parts.push(`<circle cx="90" cy="50" r="12"/>`);              // голова
+  if(wrong>1) parts.push(`<line x1="90" y1="62" x2="90" y2="96"/>`);        // туловище
+  if(wrong>2) parts.push(`<line x1="90" y1="70" x2="76" y2="84"/>`);        // левая рука
+  if(wrong>3) parts.push(`<line x1="90" y1="70" x2="104" y2="84"/>`);       // правая рука
+  if(wrong>4) parts.push(`<line x1="90" y1="96" x2="80" y2="118"/>`);       // левая нога
+  if(wrong>5) parts.push(`<line x1="90" y1="96" x2="100" y2="118"/>`);      // правая нога
+  mount.innerHTML = `
+    <div class="hangman">
+      <div class="hangman-top">
+        <svg viewBox="0 0 150 150" class="hangman-svg" aria-label="Виселица">${parts.join('')}</svg>
+        <div class="hangman-info">
+          <div class="hangman-word" aria-live="polite">${masked}</div>
+          <div class="hangman-tries">Ошибки: ${wrong}/${max}</div>
+        </div>
+      </div>
+      <div class="kb" id="hgKb"></div>
+    </div>`;
+  const letters = (gs.alphabet||[]).slice();
+  const kb = $('hgKb');
+  kb.innerHTML = '';
+  letters.forEach((L,i)=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='kb-btn'+(guessed.has(L)?' used':'');
+    b.textContent=L;
+    if(guessed.has(L) || s.phase==='done'){ b.disabled=true; }
+    b.onclick=()=>doAction({type:'guess', letter:L});
+    kb.appendChild(b);
   });
 }
 
