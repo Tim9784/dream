@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import secrets
+import tempfile
 import time
 from typing import Any
 
 from flask import Flask, g, jsonify, render_template, request
 
 from games import GAMES, get_game
-from memory_store import MemoryStore
+from memory_store import FileStore, MemoryStore
 
 ROOM_TTL = 3 * 60 * 60
 CODE_LEN = 6
@@ -38,7 +40,7 @@ app.config["JSON_AS_ASCII"] = False
 
 
 def _make_store():
-    """Redis если доступен, иначе in-memory (shared-хостинг без Redis)."""
+    """Redis если доступен, иначе файловое хранилище (CGI/shared без Redis)."""
     try:
         import redis as _redis
 
@@ -46,7 +48,27 @@ def _make_store():
         client.ping()
         return client, _redis.RedisError
     except Exception:
-        return MemoryStore(), Exception
+        pass
+
+    # На CGI каждый запрос — новый процесс: MemoryStore теряет комнаты.
+    # Пишем на диск рядом с приложением / во временную папку хостинга.
+    base = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base, "data", "store"),
+        os.path.join(base, "..", "tmp", "store"),
+        os.path.join(tempfile.gettempdir(), "omove-lobby-store"),
+    ]
+    for path in candidates:
+        try:
+            os.makedirs(path, mode=0o700, exist_ok=True)
+            probe = os.path.join(path, ".write_test")
+            with open(probe, "w", encoding="utf-8") as fh:
+                fh.write("ok")
+            os.remove(probe)
+            return FileStore(path), Exception
+        except Exception:
+            continue
+    return MemoryStore(), Exception
 
 
 rds, RedisError = _make_store()
