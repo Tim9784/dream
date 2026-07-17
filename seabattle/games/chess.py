@@ -370,6 +370,7 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "board": st["board"],
         "castling": castling,
         "castle_options": [],
+        "legal_moves": [],
     }
     if (
         viewer
@@ -378,11 +379,25 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         and room["players"].get(viewer)
     ):
         white = viewer == "p1"
+        board = st["board"]
+        for r in range(8):
+            for c in range(8):
+                p = board[r][c]
+                if not p or p.isupper() != white:
+                    continue
+                for tr, tc in _legal_moves(board, r, c, castling):
+                    out["legal_moves"].append({
+                        "from_r": r,
+                        "from_c": c,
+                        "to_r": tr,
+                        "to_c": tc,
+                        "capture": bool(board[tr][tc]),
+                    })
         row = 7 if white else 0
         king_c = 4
         rights = castling.get(viewer) or {}
-        for tr, tc, side in _castling_targets(st["board"], white, rights):
-            if (tr, tc) not in _legal_moves(st["board"], row, king_c, castling):
+        for tr, tc, side in _castling_targets(board, white, rights):
+            if (tr, tc) not in _legal_moves(board, row, king_c, castling):
                 continue
             short = side == "K"
             out["castle_options"].append({
@@ -393,7 +408,6 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
                 "to_c": tc,
                 "short": short,
                 "label": "Короткая рокировка" if short else "Длинная рокировка",
-                "sub": "король на 2 клетки к краю h" if short else "король на 2 клетки к краю a",
             })
     return out
 

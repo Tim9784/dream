@@ -811,19 +811,27 @@ function renderBoardGame(mount, s, kind){
   const castleOpts = (kind==='chess' && Array.isArray(s.game_state&&s.game_state.castle_options))
     ? s.game_state.castle_options
     : [];
-  const castleKey = new Set(castleOpts.map(o => o.to_r+','+o.to_c));
+  const legalMoves = (kind==='chess' && Array.isArray(s.game_state&&s.game_state.legal_moves))
+    ? s.game_state.legal_moves
+    : [];
   const kingPick = !!(picked && kind==='chess' && board[picked.r] && board[picked.r][picked.c]
     && String(board[picked.r][picked.c]).toUpperCase()==='K');
+  const showCastleBtns = kingPick && castleOpts.length > 0;
 
-  let hint = 'Ты ходишь снизу вверх';
-  if(kind==='chess' && castleOpts.length){
-    hint = 'Ты ходишь снизу вверх · доступна рокировка';
+  const moveHints = {};
+  if(picked && kind==='chess'){
+    legalMoves.forEach(m=>{
+      if(m.from_r===picked.r && m.from_c===picked.c){
+        moveHints[m.to_r+','+m.to_c] = !!m.capture;
+      }
+    });
   }
 
-  const castleBtns = castleOpts.length
+  const hint = 'Ты ходишь снизу вверх';
+
+  const castleBtns = showCastleBtns
     ? `<div class="castle-bar" role="group" aria-label="Рокировка">${castleOpts.map((o,i)=>{
-        const short = !!o.short;
-        const label = short ? 'Рокировка O-O' : 'Рокировка O-O-O';
+        const label = o.short ? 'Короткая рокировка' : 'Длинная рокировка';
         return `<button type="button" class="castle-quiet" data-castle="${i}">${label}</button>`;
       }).join('')}</div>`
     : '';
@@ -841,11 +849,10 @@ function renderBoardGame(mount, s, kind){
     const dark=(sr+sc)%2===1;
     sq.className='sq '+(dark?'dark':'light');
     if(picked && picked.r===sr && picked.c===sc) sq.classList.add('sel');
-    const isCastleTarget = castleKey.has(sr+','+sc);
-    // подсветка клетки рокировки — только когда выбран король
-    if(isCastleTarget && myTurn && kingPick){
-      sq.classList.add('castle-target');
-    }
+    const hintKey = sr+','+sc;
+    const isMove = Object.prototype.hasOwnProperty.call(moveHints, hintKey);
+    const isCapture = !!moveHints[hintKey];
+    if(isMove) sq.classList.add(isCapture ? 'move-capture' : 'move-target');
     // координаты: a–h / 1–8 с учётом переворота доски
     const file = FILES[sc];
     const rank = String(8 - sr);
@@ -861,9 +868,9 @@ function renderBoardGame(mount, s, kind){
       fl.textContent = file;
       sq.appendChild(fl);
     }
-    if(isCastleTarget && myTurn && kingPick){
+    if(isMove && !isCapture){
       const dot = document.createElement('span');
-      dot.className = 'castle-dot';
+      dot.className = 'move-dot';
       dot.setAttribute('aria-hidden','true');
       sq.appendChild(dot);
     }
@@ -882,11 +889,29 @@ function renderBoardGame(mount, s, kind){
     sq.onclick = ()=>{
       if(!myTurn) return;
       if(!picked){
+        // выбираем только свою фигуру
+        const mine = cell && (
+          (kind==='chess' && ((s.you==='p1' && cell===cell.toUpperCase()) || (s.you==='p2' && cell===cell.toLowerCase()))) ||
+          (kind==='checkers' && ((s.you==='p1' && cell>0) || (s.you==='p2' && cell<0)))
+        );
+        if(!mine) return;
         picked={r:sr,c:sc};
         renderBoardGame(mount, s, kind);
         return;
       }
       if(picked.r===sr && picked.c===sc){ picked=null; renderBoardGame(mount, s, kind); return; }
+      // клик по чужой/пустой клетке без хода — перевыбор своей фигуры
+      if(kind==='chess' && !isMove){
+        const mine = cell && ((s.you==='p1' && cell===cell.toUpperCase()) || (s.you==='p2' && cell===cell.toLowerCase()));
+        if(mine){
+          picked={r:sr,c:sc};
+          renderBoardGame(mount, s, kind);
+          return;
+        }
+        picked=null;
+        renderBoardGame(mount, s, kind);
+        return;
+      }
       const from=picked; picked=null;
       doAction({from_r:from.r, from_c:from.c, to_r:sr, to_c:sc});
     };
@@ -895,7 +920,7 @@ function renderBoardGame(mount, s, kind){
 
   mount.querySelectorAll('[data-castle]').forEach(btn=>{
     btn.onclick = ()=>{
-      if(!myTurn) return;
+      if(!myTurn || !kingPick) return;
       const opt = castleOpts[Number(btn.getAttribute('data-castle'))];
       if(!opt) return;
       picked = null;
