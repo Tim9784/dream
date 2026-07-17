@@ -7,6 +7,7 @@ const GAME_ICONS = {
   durak: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="2.2"/><path d="M12 8.2c-.9-1.3-2.5-1.2-2.5.2 0 1.4 2.5 3.4 2.5 3.4s2.5-2 2.5-3.4c0-1.4-1.6-1.5-2.5-.2Z" fill="currentColor" stroke="none"/><path d="M9.2 17.8h5.6" stroke-linecap="round"/></svg>`,
   blik: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="10" height="14" rx="2" transform="rotate(-8 9 12)"/><rect x="10" y="5" width="10" height="14" rx="2" transform="rotate(10 15 12)"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>`,
   hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
+  billiard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="8" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10.5" r="1.7"/><circle cx="16.5" cy="14" r="1.5"/><path d="M8 12l7.5-4"/></svg>`,
 };
 
 const ANIMALS = [
@@ -31,6 +32,7 @@ const GAMES = {
   durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
   blik: {title:'OUNO', blurb:'Сбрось карты по цвету или знаку — 2–4 игрока'},
   hangman: {title:'Виселица', blurb:'Отгадай слово по буквам — соло'},
+  billiard: {title:'Бильярд', blurb:'Пул на двоих — целься, сила, траектория'},
 };
 
 const PRESETS = {
@@ -72,6 +74,9 @@ let SB = {
 // checkers/chess selection
 let picked = null; // {r,c}
 let bgSel = {from:null, die:null};
+
+// billiard aim
+let BQ = {angle:0, power:0.55, aiming:false, animating:false, lastFramesSig:''};
 
 function currentTheme(){ return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'; }
 function applyTheme(theme){
@@ -403,6 +408,18 @@ function applyState(s, opts={}){
     const who = s.vs_local && s.your_name ? `${s.your_name}: ` : '';
     setPlayStatus(s, who + (s.message || ''));
     setWinChance(s);
+    // чужой удар в бильярде — проиграть анимацию один раз
+    if(s.game==='billiard' && !BQ.animating){
+      const frames = s.game_state && s.game_state.frames;
+      const sig = frames && frames.length>1 ? JSON.stringify(frames[0])+frames.length+String(s.message||'') : '';
+      if(sig && sig !== BQ.lastFramesSig){
+        BQ.lastFramesSig = sig;
+        playBilliardFrames(s, frames).then(()=>renderGame(s));
+        if(!pollTimer) startPoll();
+        setPlayStatus(s, who + (s.message || ''));
+        return;
+      }
+    }
     renderGame(s);
     if(!pollTimer) startPoll();
     // после рендера доски ещё раз — на случай гонки с poll
@@ -462,6 +479,11 @@ async function doAction(payload){
       method:'POST',
       body:JSON.stringify({token, ...payload})
     });
+    const frames = data.state && data.state.game_state && data.state.game_state.frames;
+    if(data.state && data.state.game==='billiard' && frames && frames.length > 1){
+      BQ.lastFramesSig = JSON.stringify(frames[0])+frames.length+String(data.state.message||'');
+      await playBilliardFrames(data.state, frames);
+    }
     applyState(data.state);
   }catch(e){ $('playErr').textContent=e.message; }
 }
@@ -476,6 +498,247 @@ function renderGame(s){
   if(s.game==='durak') return renderDurak(mount, s);
   if(s.game==='blik') return renderBlik(mount, s);
   if(s.game==='hangman') return renderHangman(mount, s);
+  if(s.game==='billiard') return renderBilliard(mount, s);
+}
+
+/* ===== Billiard ===== */
+function playBilliardFrames(s, frames){
+  return new Promise(resolve=>{
+    const mount = $('gameMount');
+    if(!mount || BQ.animating){ resolve(); return; }
+    BQ.animating = true;
+    let i = 0;
+    const tick = ()=>{
+      if(!frames[i]){ BQ.animating=false; resolve(); return; }
+      drawBilliardFrame(mount, s, frames[i], null);
+      i += 1;
+      setTimeout(tick, 28);
+    };
+    tick();
+  });
+}
+
+function billiardCue(gs){
+  return (gs.balls||[]).find(b=>b.cue) || null;
+}
+
+function billiardAimLine(gs, angle, power){
+  const cue = billiardCue(gs);
+  if(!cue || cue.pocketed || cue.x==null) return null;
+  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.029;
+  let x = cue.x, y = cue.y;
+  let dx = Math.cos(angle), dy = Math.sin(angle);
+  const pts = [[x,y]];
+  const others = (gs.balls||[]).filter(b=>!b.pocketed && !b.cue && b.x!=null);
+  for(let step=0; step<180; step++){
+    x += dx * 0.012; y += dy * 0.012;
+    // cushion
+    if(x < r){ x=r; dx=Math.abs(dx); pts.push([x,y]); }
+    else if(x > tw-r){ x=tw-r; dx=-Math.abs(dx); pts.push([x,y]); }
+    if(y < r){ y=r; dy=Math.abs(dy); pts.push([x,y]); }
+    else if(y > th-r){ y=th-r; dy=-Math.abs(dy); pts.push([x,y]); }
+    for(const b of others){
+      const d = Math.hypot(x-b.x, y-b.y);
+      if(d <= r*2){
+        pts.push([x,y]);
+        // ghost target direction approx
+        const nx=(b.x-x)/(d||1), ny=(b.y-y)/(d||1);
+        pts.push([b.x + nx*r*3.2, b.y + ny*r*3.2]);
+        return {pts, hit:b, power};
+      }
+    }
+    if(step%6===0) pts.push([x,y]);
+  }
+  pts.push([x,y]);
+  return {pts, hit:null, power};
+}
+
+function drawBilliardFrame(mount, s, frameOrNull, aim){
+  const canvas = mount.querySelector('#bqCanvas');
+  if(!canvas) return;
+  const gs = s.game_state||{};
+  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.029;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const pad = 18;
+  const scale = Math.min((W-pad*2)/tw, (H-pad*2)/th);
+  const ox = (W - tw*scale)/2, oy = (H - th*scale)/2;
+  const toX = x => ox + x*scale;
+  const toY = y => oy + y*scale;
+
+  // cloth
+  const g = ctx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,'#14532d'); g.addColorStop(0.5,'#166534'); g.addColorStop(1,'#14532d');
+  ctx.fillStyle = '#1c1917';
+  ctx.fillRect(0,0,W,H);
+  roundRect(ctx, ox-10, oy-10, tw*scale+20, th*scale+20, 14);
+  ctx.fillStyle = '#3f2a1a';
+  ctx.fill();
+  roundRect(ctx, ox, oy, tw*scale, th*scale, 8);
+  ctx.fillStyle = g;
+  ctx.fill();
+  // pockets
+  (gs.pockets||[]).forEach(p=>{
+    ctx.beginPath();
+    ctx.arc(toX(p.x), toY(p.y), Math.max(9, r*scale*1.7), 0, Math.PI*2);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fill();
+  });
+
+  const balls = gs.balls||[];
+  const drawBall = (b, x, y)=>{
+    if(x==null || y==null) return;
+    const cx=toX(x), cy=toY(y), br=r*scale;
+    const grd = ctx.createRadialGradient(cx-br*0.35, cy-br*0.4, br*0.1, cx, cy, br);
+    grd.addColorStop(0, '#fff');
+    grd.addColorStop(0.18, b.color||'#ccc');
+    grd.addColorStop(1, shade(b.color||'#999', -40));
+    ctx.beginPath(); ctx.arc(cx,cy,br,0,Math.PI*2); ctx.fillStyle=grd; ctx.fill();
+    if(b.stripe){
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx,cy,br,0,Math.PI*2); ctx.clip();
+      ctx.fillStyle='rgba(255,255,255,.88)';
+      ctx.fillRect(cx-br, cy-br*0.35, br*2, br*0.7);
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(cx,cy,br,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,.25)'; ctx.lineWidth=1; ctx.stroke();
+    }
+    if(b.id>0){
+      ctx.fillStyle = b.eight ? '#fafafa' : '#111';
+      ctx.font = `700 ${Math.max(9, br*0.85)}px Outfit,sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(String(b.id), cx, cy+0.5);
+    }
+  };
+
+  if(frameOrNull){
+    frameOrNull.forEach((pos, idx)=>{
+      const b = balls[idx] || {id:idx, color:'#aaa'};
+      if(pos[2]) return;
+      drawBall({...b, id:b.id}, pos[0], pos[1]);
+    });
+  } else {
+    balls.forEach(b=> drawBall(b, b.x, b.y));
+  }
+
+  if(aim && aim.pts && aim.pts.length>1){
+    ctx.beginPath();
+    ctx.moveTo(toX(aim.pts[0][0]), toY(aim.pts[0][1]));
+    for(let i=1;i<aim.pts.length;i++) ctx.lineTo(toX(aim.pts[i][0]), toY(aim.pts[i][1]));
+    ctx.strokeStyle = 'rgba(250,250,250,.55)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6,6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const last = aim.pts[aim.pts.length-1];
+    ctx.beginPath();
+    ctx.arc(toX(last[0]), toY(last[1]), 4, 0, Math.PI*2);
+    ctx.fillStyle='rgba(250,250,250,.7)';
+    ctx.fill();
+  }
+}
+
+function shade(hex, amt){
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'');
+  if(!m) return hex;
+  const n = v => Math.max(0, Math.min(255, parseInt(v,16)+amt));
+  return '#'+[n(m[1]),n(m[2]),n(m[3])].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+
+function renderBilliard(mount, s){
+  if(BQ.animating) return;
+  const gs = s.game_state||{};
+  const myTurn = s.turn===s.you && s.phase==='playing';
+  const g1 = gs.groups&&gs.groups.p1, g2 = gs.groups&&gs.groups.p2;
+  const groupLabel = g => g==='solid'?'сплошные':(g==='stripe'?'полосатые':'—');
+  const hand = !!(gs.ball_in_hand && myTurn);
+
+  mount.innerHTML = `
+    <div class="bq-wrap">
+      <div class="bq-meta">
+        <div><span class="bq-k">Ты</span> ${escapeHtml(s.your_name||'')} · ${groupLabel(gs.groups&&gs.groups[s.you])}</div>
+        <div><span class="bq-k">Счёт</span> ${gs.scores&&gs.scores.p1||0} : ${gs.scores&&gs.scores.p2||0}</div>
+      </div>
+      <canvas id="bqCanvas" class="bq-canvas" width="720" height="380"></canvas>
+      <div class="bq-controls ${myTurn&&!hand?'':'dim'}">
+        <label class="bq-power"><span>Сила</span>
+          <input id="bqPower" type="range" min="8" max="100" value="${Math.round(BQ.power*100)}">
+          <em id="bqPowerVal">${Math.round(BQ.power*100)}%</em>
+        </label>
+        <button type="button" class="btn" id="bqShoot" ${myTurn&&!hand?'':'disabled'}>Удар</button>
+      </div>
+      <p class="hint bq-hint">${hand
+        ? 'Биток в руке — кликни по столу, куда поставить'
+        : (myTurn ? 'Тяни от битка мышью/пальцем, чтобы нацелить. Отпусти или жми «Удар».' : 'Ход соперника')}</p>
+    </div>`;
+
+  const canvas = $('bqCanvas');
+  const redraw = ()=>{
+    const aim = (myTurn && !hand) ? billiardAimLine(gs, BQ.angle, BQ.power) : null;
+    drawBilliardFrame(mount, s, null, aim);
+  };
+  redraw();
+
+  const power = $('bqPower');
+  const powerVal = $('bqPowerVal');
+  if(power){
+    power.oninput = ()=>{
+      BQ.power = Math.max(0.08, Math.min(1, Number(power.value)/100));
+      if(powerVal) powerVal.textContent = Math.round(BQ.power*100)+'%';
+      redraw();
+    };
+  }
+
+  const toTable = (evt)=>{
+    const rect = canvas.getBoundingClientRect();
+    const tw=(gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1;
+    const pad=18;
+    const scale = Math.min((canvas.width-pad*2)/tw, (canvas.height-pad*2)/th);
+    const ox=(canvas.width-tw*scale)/2, oy=(canvas.height-th*scale)/2;
+    const cx = (evt.clientX - rect.left) * (canvas.width/rect.width);
+    const cy = (evt.clientY - rect.top) * (canvas.height/rect.height);
+    return {x:(cx-ox)/scale, y:(cy-oy)/scale};
+  };
+
+  const onPointer = (evt)=>{
+    if(!myTurn || hand || BQ.animating) return;
+    const cue = billiardCue(gs);
+    if(!cue || cue.x==null) return;
+    const p = toTable(evt);
+    // направление удара — от курсора к битку (тянем «назад»), сила — по дистанции
+    const dx = cue.x - p.x, dy = cue.y - p.y;
+    const dist = Math.hypot(dx, dy);
+    if(dist > 0.001){
+      BQ.angle = Math.atan2(dy, dx);
+      BQ.power = Math.max(0.08, Math.min(1, dist / 0.42));
+      if(power){ power.value = String(Math.round(BQ.power*100)); }
+      if(powerVal) powerVal.textContent = Math.round(BQ.power*100)+'%';
+    }
+    redraw();
+  };
+
+  canvas.onpointerdown = (e)=>{
+    if(hand && myTurn){
+      const p = toTable(e);
+      doAction({type:'place_cue', x:p.x, y:p.y});
+      return;
+    }
+    BQ.aiming = true;
+    canvas.setPointerCapture(e.pointerId);
+    onPointer(e);
+  };
+  canvas.onpointermove = (e)=>{ if(BQ.aiming) onPointer(e); };
+  canvas.onpointerup = (e)=>{ BQ.aiming=false; try{canvas.releasePointerCapture(e.pointerId)}catch(_){} };
+  canvas.onpointercancel = ()=>{ BQ.aiming=false; };
+
+  if($('bqShoot')) $('bqShoot').onclick = ()=>{
+    if(!myTurn || hand || BQ.animating) return;
+    doAction({type:'shot', angle:BQ.angle, power:BQ.power});
+  };
 }
 
 /* ===== Sea battle ===== */
