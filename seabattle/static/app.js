@@ -1943,6 +1943,7 @@ function goHome(msg){
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   lastPlaySig = '';
+  lastFinishedSig = '';
   BQ.animating = false; BQ.aiming = false; BQ.lastShotId = -1;
   BQ.mounted = false; BQ.bound = false; BQ.view = null; BQ.redraw = null;
   SB.placed=[]; SB.selected=null;
