@@ -85,6 +85,30 @@ function trackGameUtm(gameId, action){
   }catch(_){}
 }
 
+// чтобы poll не слал «конец игры» много раз
+let lastFinishedSig = '';
+function trackGameFinished(s){
+  if(!s || s.phase !== 'done' || !s.game) return;
+  const sig = [s.code || code || '', s.game, s.winner || '', s.loser || '', s.result || '', s.message || ''].join('|');
+  if(sig === lastFinishedSig) return;
+  lastFinishedSig = sig;
+  trackGameUtm(s.game, 'finished');
+  try{
+    if(typeof ym === 'function'){
+      const meta = GAME_UTM[String(s.game).toLowerCase()];
+      const campaign = (meta && meta.campaign) || s.game;
+      ym(METRIKA_ID, 'reachGoal', 'game_finished', {
+        game: s.game,
+        campaign,
+        winner: s.winner || null,
+        result: s.result || null,
+        vs_ai: !!s.vs_ai,
+        vs_local: !!s.vs_local,
+      });
+    }
+  }catch(_){}
+}
+
 const PRESETS = {
   small:{grid:8,fleet:[3,2,2,1,1,1]},
   medium:{grid:10,fleet:[4,3,3,2,2,2,1,1,1,1]},
@@ -510,6 +534,7 @@ function applyState(s, opts={}){
   } else if(s.phase==='done'){
     show('done');
     setWinChance(s);
+    trackGameFinished(s);
     startPoll(); // чтобы увидеть рематч от друзей
     const voted = !!(s.you && s.rematch_votes && s.rematch_votes[s.you]);
     const rematchBtn = $('btnReplay');
