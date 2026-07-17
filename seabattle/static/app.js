@@ -609,18 +609,47 @@ function drawBilliardFrame(mount, s, frameOrNull, aim){
   g.addColorStop(0,'#14532d'); g.addColorStop(0.5,'#166534'); g.addColorStop(1,'#14532d');
   ctx.fillStyle = '#1c1917';
   ctx.fillRect(0,0,W,H);
-  roundRect(ctx, ox-10, oy-10, tw*scale+20, th*scale+20, 14);
+  // внешняя рама
+  roundRect(ctx, ox-14, oy-14, tw*scale+28, th*scale+28, 16);
+  ctx.fillStyle = '#2a1a10';
+  ctx.fill();
+  // борт (дерево)
+  roundRect(ctx, ox-8, oy-8, tw*scale+16, th*scale+16, 12);
+  ctx.fillStyle = '#5c3d24';
+  ctx.fill();
+  // внутренний кант борта
+  roundRect(ctx, ox-3, oy-3, tw*scale+6, th*scale+6, 9);
   ctx.fillStyle = '#3f2a1a';
   ctx.fill();
-  roundRect(ctx, ox, oy, tw*scale, th*scale, 8);
+  // сукно
+  roundRect(ctx, ox, oy, tw*scale, th*scale, 6);
   ctx.fillStyle = g;
   ctx.fill();
+  // лёгкая сетка сукна
+  ctx.save();
+  ctx.beginPath();
+  roundRect(ctx, ox, oy, tw*scale, th*scale, 6);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(255,255,255,.035)';
+  ctx.lineWidth = 1;
+  for(let gx=ox; gx<ox+tw*scale; gx+=18){
+    ctx.beginPath(); ctx.moveTo(gx, oy); ctx.lineTo(gx, oy+th*scale); ctx.stroke();
+  }
+  for(let gy=oy; gy<oy+th*scale; gy+=18){
+    ctx.beginPath(); ctx.moveTo(ox, gy); ctx.lineTo(ox+tw*scale, gy); ctx.stroke();
+  }
+  ctx.restore();
   // pockets
   (gs.pockets||[]).forEach(p=>{
     ctx.beginPath();
-    ctx.arc(toX(p.x), toY(p.y), Math.max(9, r*scale*1.7), 0, Math.PI*2);
-    ctx.fillStyle = '#0a0a0a';
+    ctx.arc(toX(p.x), toY(p.y), Math.max(10, r*scale*1.75), 0, Math.PI*2);
+    ctx.fillStyle = '#050505';
     ctx.fill();
+    ctx.beginPath();
+    ctx.arc(toX(p.x), toY(p.y), Math.max(10, r*scale*1.75), 0, Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
   });
 
   const balls = gs.balls||[];
