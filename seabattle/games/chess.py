@@ -169,29 +169,144 @@ def _gen_moves(board: list[list[str | None]], r: int, c: int) -> list[tuple[int,
     return moves
 
 
-def _legal_moves(board: list[list[str | None]], r: int, c: int) -> list[tuple[int, int]]:
+def _path_clear(board: list[list[str | None]], r: int, c0: int, c1: int) -> bool:
+    lo, hi = (c0, c1) if c0 < c1 else (c1, c0)
+    for c in range(lo + 1, hi):
+        if board[r][c]:
+            return False
+    return True
+
+
+def _castling_targets(
+    board: list[list[str | None]],
+    white: bool,
+    rights: dict[str, bool] | None,
+) -> list[tuple[int, int, str]]:
+    """Возможные клетки рокировки короля: (tr, tc, side) где side in ('K','Q')."""
+    if not rights:
+        return []
+    row = 7 if white else 0
+    king = "K" if white else "k"
+    rook = "R" if white else "r"
+    if board[row][4] != king:
+        return []
+    # нельзя рокироваться из шаха
+    if _in_check(board, white):
+        return []
+    out: list[tuple[int, int, str]] = []
+    enemy_white = not white
+
+    # короткая (O-O): король e→g, ладья h→f
+    if rights.get("K") and board[row][7] == rook and _path_clear(board, row, 4, 7):
+        if (
+            not _is_attacked(board, row, 4, by_white=enemy_white)
+            and not _is_attacked(board, row, 5, by_white=enemy_white)
+            and not _is_attacked(board, row, 6, by_white=enemy_white)
+        ):
+            out.append((row, 6, "K"))
+
+    # длинная (O-O-O): король e→c, ладья a→d
+    if rights.get("Q") and board[row][0] == rook and _path_clear(board, row, 4, 0):
+        if (
+            not _is_attacked(board, row, 4, by_white=enemy_white)
+            and not _is_attacked(board, row, 3, by_white=enemy_white)
+            and not _is_attacked(board, row, 2, by_white=enemy_white)
+        ):
+            out.append((row, 2, "Q"))
+    return out
+
+
+def _apply_move_on(
+    board: list[list[str | None]],
+    fr: int,
+    fc: int,
+    tr: int,
+    tc: int,
+) -> list[list[str | None]]:
+    """Применить ход (включая рокировку) на копии доски."""
+    nb = _clone(board)
+    piece = nb[fr][fc]
+    nb[tr][tc] = piece
+    nb[fr][fc] = None
+    if piece and piece.upper() == "P" and tr in (0, 7):
+        nb[tr][tc] = "Q" if piece.isupper() else "q"
+    # рокировка: король шагнул на 2 клетки по горизонтали
+    if piece and piece.upper() == "K" and fr == tr and abs(tc - fc) == 2:
+        row = fr
+        if tc == 6:  # O-O
+            nb[row][5] = nb[row][7]
+            nb[row][7] = None
+        elif tc == 2:  # O-O-O
+            nb[row][3] = nb[row][0]
+            nb[row][0] = None
+    return nb
+
+
+def _update_castling_rights(
+    castling: dict[str, Any],
+    board_before: list[list[str | None]],
+    fr: int,
+    fc: int,
+    tr: int,
+    tc: int,
+) -> None:
+    piece = board_before[fr][fc]
+    if not piece:
+        return
+    slot = "p1" if piece.isupper() else "p2"
+    rights = castling.setdefault(slot, {"K": True, "Q": True})
+    kind = piece.upper()
+    if kind == "K":
+        rights["K"] = False
+        rights["Q"] = False
+    elif kind == "R":
+        if fr == (7 if piece.isupper() else 0):
+            if fc == 0:
+                rights["Q"] = False
+            elif fc == 7:
+                rights["K"] = False
+    # если съели ладью на исходной клетке — снять право соперника
+    captured = board_before[tr][tc]
+    if captured and captured.upper() == "R":
+        opp = "p2" if captured.islower() else "p1"
+        opp_rights = castling.setdefault(opp, {"K": True, "Q": True})
+        home = 0 if captured.islower() else 7
+        if tr == home and tc == 0:
+            opp_rights["Q"] = False
+        elif tr == home and tc == 7:
+            opp_rights["K"] = False
+
+
+def _legal_moves(
+    board: list[list[str | None]],
+    r: int,
+    c: int,
+    castling: dict[str, Any] | None = None,
+) -> list[tuple[int, int]]:
     piece = board[r][c]
     if not piece:
         return []
     white = piece.isupper()
-    legal = []
+    legal: list[tuple[int, int]] = []
     for tr, tc in _gen_moves(board, r, c):
-        nb = _clone(board)
-        nb[tr][tc] = nb[r][c]
-        nb[r][c] = None
-        # auto-queen
-        if nb[tr][tc] and nb[tr][tc].upper() == "P" and tr in (0, 7):
-            nb[tr][tc] = "Q" if white else "q"
+        nb = _apply_move_on(board, r, c, tr, tc)
         if not _in_check(nb, white):
             legal.append((tr, tc))
+    if piece.upper() == "K":
+        slot = "p1" if white else "p2"
+        rights = (castling or {}).get(slot) if castling else None
+        for tr, tc, _side in _castling_targets(board, white, rights):
+            nb = _apply_move_on(board, r, c, tr, tc)
+            if not _in_check(nb, white):
+                legal.append((tr, tc))
     return legal
 
 
-def _any_legal(board: list[list[str | None]], white: bool) -> bool:
+def _any_legal(board: list[list[str | None]], white: bool, castling: dict[str, Any] | None = None) -> bool:
     for r in range(8):
         for c in range(8):
             p = board[r][c]
-            if p and p.isupper() == white and _legal_moves(board, r, c):
+            if p and p.isupper() == white and _legal_moves(board, r, c, castling):
                 return True
     return False
 
@@ -202,7 +317,9 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
     if room["turn"] != slot:
         return False, "Сейчас ход соперника"
     white = slot == "p1"
-    board = room["state"]["board"]
+    st = room["state"]
+    board = st["board"]
+    castling = st.setdefault("castling", {"p1": {"K": True, "Q": True}, "p2": {"K": True, "Q": True}})
     try:
         fr, fc = int(action["from_r"]), int(action["from_c"])
         tr, tc = int(action["to_r"]), int(action["to_c"])
@@ -213,42 +330,45 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
     piece = board[fr][fc]
     if not piece or piece.isupper() != white:
         return False, "Это не твоя фигура"
-    if (tr, tc) not in _legal_moves(board, fr, fc):
+    if (tr, tc) not in _legal_moves(board, fr, fc, castling):
         return False, "Нелегальный ход"
 
-    board[tr][tc] = piece
-    board[fr][fc] = None
-    if piece.upper() == "P" and tr in (0, 7):
-        board[tr][tc] = "Q" if white else "q"
-    # castling rights simplistic clear
-    if piece.upper() == "K":
-        room["state"]["castling"][slot] = {"K": False, "Q": False}
+    was_castle = piece.upper() == "K" and fr == tr and abs(tc - fc) == 2
+    _update_castling_rights(castling, board, fr, fc, tr, tc)
+    moved = _apply_move_on(board, fr, fc, tr, tc)
+    st["board"][:] = moved
+    board = st["board"]
 
     opp = "p2" if slot == "p1" else "p1"
     opp_white = not white
+    castle_note = "Рокировка! " if was_castle else ""
     if _in_check(board, opp_white):
-        if not _any_legal(board, opp_white):
+        if not _any_legal(board, opp_white, castling):
             room["phase"] = "done"
             room["winner"] = slot
             room["turn"] = None
-            room["message"] = f"Мат! Победа {room['players'][slot]['name']}"
+            room["message"] = f"{castle_note}Мат! Победа {room['players'][slot]['name']}"
             return True, "ok"
         room["turn"] = opp
-        room["message"] = f"Шах! Ход {room['players'][opp]['name']}"
+        room["message"] = f"{castle_note}Шах! Ход {room['players'][opp]['name']}"
     else:
-        if not _any_legal(board, opp_white):
+        if not _any_legal(board, opp_white, castling):
             room["phase"] = "done"
             room["winner"] = None
             room["turn"] = None
-            room["message"] = "Пат — ничья"
+            room["message"] = f"{castle_note}Пат — ничья"
         else:
             room["turn"] = opp
-            room["message"] = f"Ход {room['players'][opp]['name']}"
+            room["message"] = f"{castle_note}Ход {room['players'][opp]['name']}"
     return True, "ok"
 
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
-    return {"board": room["state"]["board"]}
+    st = room["state"]
+    return {
+        "board": st["board"],
+        "castling": st.get("castling") or {"p1": {"K": True, "Q": True}, "p2": {"K": True, "Q": True}},
+    }
 
 
 def win_chance(room: dict[str, Any], slot: str) -> int:
@@ -346,19 +466,26 @@ def _eval_board(board: list[list[str | None]], white_perspective: bool) -> int:
     return score if white_perspective else -score
 
 
-def _all_moves(board: list[list[str | None]], white: bool) -> list[tuple[int, int, int, int]]:
+def _all_moves(
+    board: list[list[str | None]],
+    white: bool,
+    castling: dict[str, Any] | None = None,
+) -> list[tuple[int, int, int, int]]:
     moves = []
     for r in range(8):
         for c in range(8):
             p = board[r][c]
             if p and p.isupper() == white:
-                for tr, tc in _legal_moves(board, r, c):
+                for tr, tc in _legal_moves(board, r, c, castling):
                     moves.append((r, c, tr, tc))
     # capture-ish ordering
     def key(m):
         fr, fc, tr, tc = m
         victim = board[tr][tc]
-        return -(VALUES.get(victim.upper(), 0) if victim else 0)
+        # лёгкий бонус рокировке
+        piece = board[fr][fc]
+        castle_bonus = 30 if piece and piece.upper() == "K" and abs(tc - fc) == 2 else 0
+        return -(VALUES.get(victim.upper(), 0) if victim else 0) - castle_bonus
     moves.sort(key=key)
     return moves
 
@@ -373,12 +500,7 @@ def _negamax(board: list[list[str | None]], depth: int, alpha: int, beta: int, w
         return 0
     best = -10**9
     for fr, fc, tr, tc in moves:
-        nb = _clone(board)
-        piece = nb[fr][fc]
-        nb[tr][tc] = piece
-        nb[fr][fc] = None
-        if piece and piece.upper() == "P" and tr in (0, 7):
-            nb[tr][tc] = "Q" if white else "q"
+        nb = _apply_move_on(board, fr, fc, tr, tc)
         val = -_negamax(nb, depth - 1, -beta, -alpha, not white)
         if val > best:
             best = val
@@ -391,23 +513,23 @@ def _negamax(board: list[list[str | None]], depth: int, alpha: int, beta: int, w
 
 def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
     white = slot == "p1"
-    board = room["state"]["board"]
-    moves = _all_moves(board, white)
+    st = room["state"]
+    board = st["board"]
+    castling = st.get("castling")
+    moves = _all_moves(board, white, castling)
     if not moves:
         return None
     depth = 3 if len(moves) < 35 else 2
     best_move = moves[0]
     best_score = -10**9
     for fr, fc, tr, tc in moves:
-        nb = _clone(board)
-        piece = nb[fr][fc]
-        nb[tr][tc] = piece
-        nb[fr][fc] = None
-        if piece and piece.upper() == "P" and tr in (0, 7):
-            nb[tr][tc] = "Q" if white else "q"
+        nb = _apply_move_on(board, fr, fc, tr, tc)
         score = -_negamax(nb, depth - 1, -10**9, 10**9, not white)
         # tiny preference to central advances
         score += (3 - abs(3.5 - tc)) * 0.1
+        # предпочтение рокировке в дебюте
+        if abs(tc - fc) == 2 and board[fr][fc] and board[fr][fc].upper() == "K":
+            score += 25
         if score > best_score:
             best_score = score
             best_move = (fr, fc, tr, tc)
