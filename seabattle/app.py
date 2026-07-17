@@ -39,9 +39,9 @@ ANIMAL_NAMES = (
 # Redis rate limits: (max_hits, window_sec)
 RL_CREATE = (8, 60)
 RL_JOIN = (15, 60)
-RL_ACTION = (90, 60)
-RL_POLL = (120, 60)
-RL_GLOBAL_WRITE = (200, 10)
+RL_ACTION = (240, 60)
+RL_POLL = (180, 60)
+RL_GLOBAL_WRITE = (400, 10)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_JSON_BYTES
@@ -333,7 +333,8 @@ def schedule_ai(room: dict[str, Any]) -> None:
     """Отложить ход робота ~на секунду, чтобы не ходил мгновенно."""
     if not room.get("vs_ai"):
         return
-    room["ai_due"] = time.time() + AI_THINK_SEC
+    delay = 0.25 if room.get("game") == "stackrace" else AI_THINK_SEC
+    room["ai_due"] = time.time() + delay
 
 
 def ai_should_act(room: dict[str, Any]) -> bool:
@@ -342,6 +343,9 @@ def ai_should_act(room: dict[str, Any]) -> bool:
     ai_slot = room.get("ai_slot") or "p2"
     if room["game"] == "seabattle" and room["phase"] == "placing":
         return not bool(room["state"]["ready"].get(ai_slot))
+    if room["game"] == "stackrace" and room["phase"] == "playing":
+        pl = (room.get("state") or {}).get("players", {}).get(ai_slot) or {}
+        return bool(pl.get("alive"))
     return room["phase"] == "playing" and room.get("turn") == ai_slot
 
 
@@ -364,7 +368,8 @@ def run_ai_turns(room: dict[str, Any]) -> None:
         return
 
     acted = False
-    for _ in range(60):
+    max_steps = 12 if room.get("game") == "stackrace" else 60
+    for _ in range(max_steps):
         if room["phase"] == "done":
             break
 
@@ -383,6 +388,23 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 
         if room["phase"] != "playing":
             break
+
+        if room["game"] == "stackrace":
+            pl = (room.get("state") or {}).get("players", {}).get(ai_slot) or {}
+            if not pl.get("alive"):
+                break
+            action = mod.ai_action(room, ai_slot)
+            if not action:
+                break
+            ok, _ = mod.apply_action(room, ai_slot, action)
+            if not ok:
+                break
+            acted = True
+            # одна «серия» движений за poll, потом пауза
+            if action.get("type") == "hard":
+                break
+            continue
+
         if room.get("turn") != ai_slot:
             break
 
@@ -398,6 +420,8 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 
     if acted:
         room.pop("ai_due", None)
+        if room.get("game") == "stackrace" and ai_should_act(room):
+            schedule_ai(room)
     elif ai_should_act(room) and not room.get("ai_due"):
         # ещё должен ходить, но хода не вышло — не крутимся; ждём следующий poll
         schedule_ai(room)
@@ -480,6 +504,7 @@ def list_games():
         "games": [
             {"id": gid, "title": meta["title"], "blurb": meta["blurb"]}
             for gid, meta in GAMES.items()
+            if not meta.get("hidden")
         ],
     })
 
@@ -699,6 +724,14 @@ def get_room(code: str):
         room = load_room(code)
     if not room:
         return jsonify({"ok": False, "error": "Комната не найдена"}), 404
+    dirty = False
+    mod = get_game(room.get("game") or "")
+    if mod and hasattr(mod, "tick"):
+        try:
+            if mod.tick(room):
+                dirty = True
+        except Exception:
+            pass
     # если vs AI и почему-то не доиграл ход — догоняем
     if room.get("vs_ai"):
         was_done = room.get("phase") == "done"
@@ -708,8 +741,9 @@ def get_room(code: str):
         if (not was_done) and room.get("phase") == "done" and not room.get("stats_finished"):
             room["stats_finished"] = True
             track_finished(rds, room.get("game") or "")
-        if before != after or room.get("stats_finished"):
-            save_room(code, room)
+            dirty = True
+        if before != after:
+            dirty = True
     token = str(request.args.get("token", ""))
     slot = player_slot(room, token) if token else None
     # обновляем TTL комнаты, чтобы длинная партия не протухла
@@ -717,7 +751,9 @@ def get_room(code: str):
         try:
             rds.expire(room_key(code), ROOM_TTL)
         except RedisError:
-            save_room(code, room)
+            dirty = True
+    if dirty:
+        save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
 
 
@@ -742,6 +778,11 @@ def room_action(code: str):
         return jsonify({"ok": False, "error": "Ждём игроков"}), 409
 
     mod = get_game(room["game"])
+    if mod and hasattr(mod, "tick"):
+        try:
+            mod.tick(room)
+        except Exception:
+            pass
     was_done = room.get("phase") == "done"
     ok, err = mod.apply_action(room, slot, data)
     if not ok:

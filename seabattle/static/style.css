@@ -700,6 +700,45 @@ html[data-theme="light"] .mode-bar span{background:linear-gradient(90deg,#52525b
 html[data-theme="light"] .bar-col .bar{background:linear-gradient(180deg,#52525b,#18181b)}
 .bar-d{color:var(--soft);font-size:.7rem}
 
+/* stack race (скрытая стек-дуэль) */
+.sr-wrap{display:flex;flex-direction:column;gap:12px;animation:rise .4s ease both}
+.sr-hint{color:var(--soft);font-size:.85rem;text-align:center}
+.sr-duel{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;
+}
+@media(max-width:720px){.sr-duel{grid-template-columns:1fr;gap:18px}}
+.sr-side{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sr-meta{
+  display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;
+  font-size:.9rem;color:var(--soft);
+}
+.sr-meta strong{color:var(--heading);font-family:'Syne',sans-serif;font-size:1.05rem}
+.sr-out{color:var(--err);font-style:normal;font-weight:700}
+.sr-grid{
+  display:grid;gap:2px;width:100%;max-width:260px;
+  padding:8px;border-radius:14px;border:1px solid var(--line);
+  background:rgba(0,0,0,.22);
+}
+html[data-theme="light"] .sr-grid{background:rgba(0,0,0,.06)}
+.sr-grid.dim{opacity:.72}
+.sr-cell{
+  aspect-ratio:1;border-radius:3px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.04);
+}
+html[data-theme="light"] .sr-cell{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.04)}
+.sr-cell.filled{border-color:transparent;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.sr-cell.ghost{opacity:.28;border-color:transparent}
+.sr-side-foot{display:flex;align-items:center;gap:8px;color:var(--soft);font-size:.85rem}
+.sr-next{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:36px;height:28px;padding:0 8px;border-radius:8px;
+  border:1px solid var(--line);background:var(--chip);font-weight:700;
+  font-family:'Syne',sans-serif;
+}
+.sr-next.empty{opacity:.5}
+.sr-pad{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.sr-pad .btn{min-width:52px;padding:10px 14px}
+
 @keyframes rise{
   from{opacity:0;transform:translateY(10px)}
   to{opacity:1;transform:translateY(0)}
