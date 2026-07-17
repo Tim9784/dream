@@ -807,6 +807,7 @@ function renderBoardGame(mount, s, kind){
   const board = (s.game_state&&s.game_state.board)||[];
   const myTurn = s.turn===s.you && s.phase==='playing';
   const flip = flipNeeded(s);
+  const FILES = 'abcdefgh';
   mount.innerHTML = `<div class="hint" style="margin-bottom:6px">Ты ходишь снизу вверх</div><div class="board-frame"><div class="sq-board" id="sqBoard"></div></div>`;
   const box=$('sqBoard');
   // draw display rows top->bottom
@@ -817,6 +818,21 @@ function renderBoardGame(mount, s, kind){
     const dark=(sr+sc)%2===1;
     sq.className='sq '+(dark?'dark':'light');
     if(picked && picked.r===sr && picked.c===sc) sq.classList.add('sel');
+    // координаты: a–h / 1–8 с учётом переворота доски
+    const file = FILES[sc];
+    const rank = String(8 - sr);
+    if(dc === 0){
+      const rl = document.createElement('span');
+      rl.className = 'coord rank'+(dark?' on-dark':' on-light');
+      rl.textContent = rank;
+      sq.appendChild(rl);
+    }
+    if(dr === 7){
+      const fl = document.createElement('span');
+      fl.className = 'coord file'+(dark?' on-dark':' on-light');
+      fl.textContent = file;
+      sq.appendChild(fl);
+    }
     const cell = board[sr] ? board[sr][sc] : null;
     if(kind==='checkers'){
       if(cell){
