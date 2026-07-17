@@ -1,4 +1,4 @@
-"""Бильярд (пул) — удар с траекторией и силой, игра на двоих."""
+"""Бильярд (пул 8-ball) — детерминированная физика, мультиплеер."""
 from __future__ import annotations
 
 import math
@@ -8,24 +8,25 @@ from typing import Any
 TABLE_W = 2.0
 TABLE_H = 1.0
 BALL_R = 0.0285
-# лузы чуть шире шара; борта обрываются у «рта» лузы
-POCKET_R = 0.052
-POCKET_MOUTH = 0.062
-SIDE_MOUTH = 0.070
+POCKET_R = 0.054
+POCKET_MOUTH = 0.068
+SIDE_MOUTH = 0.074
 
-# физика: скорость в единицах стола / сек
-MAX_SPEED = 2.6
-MIN_SPEED = 0.012
-FRICTION = 1.15          # линейное замедление |v|/s
-SPIN_DRAG = 0.08         # лёгкое доп. трение
-RESTITUTION = 0.93
-CUSHION_REST = 0.78
-CUSHION_FRICTION = 0.35  # гасит касательную у борта
-DT = 1.0 / 200.0
-MAX_TIME = 14.0
-COLLISION_ITERS = 6
-FRAME_DT = 1.0 / 28.0
-MAX_FRAMES = 90
+# Скорость в единицах стола / сек. Сервер 8 CPU — считаем плотно.
+MAX_SPEED = 3.4
+MIN_SPEED = 0.008
+SLEEP_SPEED = 0.015
+FRICTION = 0.72          # замедление сукна |v|/s (слабее → живой разбой)
+RESTITUTION = 0.98       # шар–шар
+CUSHION_REST = 0.82
+CUSHION_FRICTION = 0.22
+SLOP = 0.00012           # допуск касания без коррекции
+BAUMGARTE = 0.22         # доля overlap за шаг при разведении
+DT = 1.0 / 480.0         # мелкий шаг — нет tunneling
+MAX_TIME = 16.0
+SOLVER_ITERS = 4
+FRAME_DT = 1.0 / 40.0
+MAX_FRAMES = 140
 
 BALL_COLORS = {
     0: "#f8fafc",
@@ -58,56 +59,47 @@ def _pockets() -> list[tuple[float, float]]:
     ]
 
 
-def _near_pocket_gap_x(x: float, side: bool = False) -> bool:
-    """Точка у отверстия лузы на горизонтальном борту."""
-    mouth = SIDE_MOUTH if side else POCKET_MOUTH
-    if x <= mouth or x >= TABLE_W - mouth:
+def _gap_x(x: float) -> bool:
+    if x <= POCKET_MOUTH or x >= TABLE_W - POCKET_MOUTH:
         return True
-    mid = TABLE_W / 2
-    return abs(x - mid) <= mouth
+    return abs(x - TABLE_W / 2) <= SIDE_MOUTH
 
 
-def _near_pocket_gap_y(y: float) -> bool:
-    """Точка у отверстия лузы на вертикальном борту."""
+def _gap_y(y: float) -> bool:
     return y <= POCKET_MOUTH or y >= TABLE_H - POCKET_MOUTH
 
 
 def _rack() -> list[dict[str, Any]]:
-    balls: list[dict[str, Any]] = []
-    balls.append({
+    """Плотная пирамида: шары касаются (2R), без рандомной утряски."""
+    balls: list[dict[str, Any]] = [{
         "id": 0,
         "x": TABLE_W * 0.25,
         "y": TABLE_H * 0.5,
         "vx": 0.0,
         "vy": 0.0,
         "pocketed": False,
-    })
-    apex_x = TABLE_W * 0.72
+        "sleep": True,
+    }]
+    apex_x = TABLE_W * 0.70
     apex_y = TABLE_H * 0.5
-    # классическая пирамида: 8 в центре, углы — разнотипные
-    order = [1, 9, 12, 6, 8, 14, 3, 10, 15, 4, 7, 11, 2, 13, 5]
-    gap = BALL_R * 2.002
-    row_dx = gap * math.cos(math.radians(30))
+    # 8 в центре, углы разнотипные
+    order = [1, 14, 3, 9, 8, 11, 6, 12, 5, 15, 10, 7, 2, 13, 4]
+    gap = BALL_R * 2.0
+    row_dx = gap * math.sqrt(3) / 2.0
     idx = 0
     for row in range(5):
         for col in range(row + 1):
             bid = order[idx]
             idx += 1
-            x = apex_x + row * row_dx
-            y = apex_y + (col - row / 2) * gap
             balls.append({
                 "id": bid,
-                "x": x,
-                "y": y,
+                "x": apex_x + row * row_dx,
+                "y": apex_y + (col - row / 2.0) * gap,
                 "vx": 0.0,
                 "vy": 0.0,
                 "pocketed": False,
+                "sleep": True,
             })
-    # слегка «утрясти» пирамиду, чтобы не было микровложений
-    for _ in range(12):
-        for i in range(1, len(balls)):
-            for j in range(i + 1, len(balls)):
-                _separate(balls[i], balls[j])
     return balls
 
 
@@ -122,6 +114,7 @@ def init_state(options: dict[str, Any] | None = None) -> dict[str, Any]:
         "last_pocketed": [],
         "scratch": False,
         "frames": [],
+        "shot_id": 0,
         "animating": False,
         "ball_in_hand": False,
         "colors": BALL_COLORS,
@@ -142,6 +135,20 @@ def _alive(balls: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def _dist(a: dict[str, Any], b: dict[str, Any]) -> float:
     return math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+
+
+def _speed(b: dict[str, Any]) -> float:
+    return math.hypot(b["vx"], b["vy"])
+
+
+def _wake(b: dict[str, Any]) -> None:
+    b["sleep"] = False
+
+
+def _maybe_sleep(b: dict[str, Any]) -> None:
+    if _speed(b) < SLEEP_SPEED:
+        b["vx"] = b["vy"] = 0.0
+        b["sleep"] = True
 
 
 def _group_of(ball_id: int) -> str | None:
@@ -187,167 +194,165 @@ def _place_cue_safe(st: dict[str, Any]) -> None:
     cue = _cue(st)
     cue["pocketed"] = False
     cue["vx"] = cue["vy"] = 0.0
-    for _ in range(100):
-        x = random.uniform(BALL_R * 1.4, TABLE_W * 0.45)
-        y = random.uniform(BALL_R * 1.4, TABLE_H - BALL_R * 1.4)
+    cue["sleep"] = True
+    for _ in range(120):
+        x = random.uniform(BALL_R * 1.5, TABLE_W * 0.42)
+        y = random.uniform(BALL_R * 1.5, TABLE_H - BALL_R * 1.5)
         cue["x"], cue["y"] = x, y
-        if all(_dist(cue, b) >= BALL_R * 2.08 for b in _alive(st["balls"]) if b["id"] != 0):
-            if not _pocket_check(cue):
-                return
+        if _pocket_check(cue):
+            continue
+        if all(_dist(cue, b) >= BALL_R * 2.1 for b in _alive(st["balls"]) if b["id"] != 0):
+            return
     cue["x"], cue["y"] = TABLE_W * 0.25, TABLE_H * 0.5
 
 
 def _pocket_check(ball: dict[str, Any]) -> bool:
-    # чуть легче падать в угол / бок, если шар уже у края
     for px, py in _pockets():
-        pr = POCKET_R
-        if abs(px - TABLE_W / 2) < 1e-9:
-            pr = POCKET_R * 1.05
+        pr = POCKET_R * (1.06 if abs(px - TABLE_W / 2) < 1e-9 else 1.0)
         if math.hypot(ball["x"] - px, ball["y"] - py) <= pr:
             return True
     return False
 
 
 def _clamp_speed(ball: dict[str, Any]) -> None:
-    sp = math.hypot(ball["vx"], ball["vy"])
+    sp = _speed(ball)
     if sp > MAX_SPEED:
         k = MAX_SPEED / sp
         ball["vx"] *= k
         ball["vy"] *= k
 
 
-def _apply_friction(ball: dict[str, Any], dt: float) -> None:
-    sp = math.hypot(ball["vx"], ball["vy"])
+def _friction(ball: dict[str, Any], dt: float) -> None:
+    if ball.get("sleep"):
+        return
+    sp = _speed(ball)
     if sp < MIN_SPEED:
         ball["vx"] = ball["vy"] = 0.0
+        ball["sleep"] = True
         return
-    # линейное трение сукна + лёгкий drag
-    decel = FRICTION + SPIN_DRAG * sp
-    new_sp = sp - decel * dt
+    new_sp = sp - FRICTION * dt
     if new_sp <= MIN_SPEED:
         ball["vx"] = ball["vy"] = 0.0
+        ball["sleep"] = True
         return
     k = new_sp / sp
     ball["vx"] *= k
     ball["vy"] *= k
 
 
-def _cushion(ball: dict[str, Any]) -> None:
-    """Отскок от бортов с проёмами луз — шар не «проходит сквозь» дерево."""
+def _cushion(ball: dict[str, Any]) -> bool:
+    """Отскок от бортов; у луз борт отсутствует."""
+    if ball.get("pocketed"):
+        return False
     r = BALL_R
+    hit = False
     x, y = ball["x"], ball["y"]
 
-    # левый борт
-    if x < r and not _near_pocket_gap_y(y):
+    if x < r and not _gap_y(y):
         ball["x"] = r
         if ball["vx"] < 0:
             ball["vx"] = -ball["vx"] * CUSHION_REST
             ball["vy"] *= (1.0 - CUSHION_FRICTION)
-    # правый
-    elif x > TABLE_W - r and not _near_pocket_gap_y(y):
+            hit = True
+            _wake(ball)
+    elif x > TABLE_W - r and not _gap_y(y):
         ball["x"] = TABLE_W - r
         if ball["vx"] > 0:
             ball["vx"] = -ball["vx"] * CUSHION_REST
             ball["vy"] *= (1.0 - CUSHION_FRICTION)
+            hit = True
+            _wake(ball)
 
     x, y = ball["x"], ball["y"]
-    # нижний
-    if y < r and not _near_pocket_gap_x(x, side=True):
+    if y < r and not _gap_x(x):
         ball["y"] = r
         if ball["vy"] < 0:
             ball["vy"] = -ball["vy"] * CUSHION_REST
             ball["vx"] *= (1.0 - CUSHION_FRICTION)
-    # верхний
-    elif y > TABLE_H - r and not _near_pocket_gap_x(x, side=True):
+            hit = True
+            _wake(ball)
+    elif y > TABLE_H - r and not _gap_x(x):
         ball["y"] = TABLE_H - r
         if ball["vy"] > 0:
             ball["vy"] = -ball["vy"] * CUSHION_REST
             ball["vx"] *= (1.0 - CUSHION_FRICTION)
+            hit = True
+            _wake(ball)
 
-    # если вылетели за стол вне лузы — мягко вернуть
+    # не даём улететь за стол мимо лузы
     if not _pocket_check(ball):
-        ball["x"] = min(max(ball["x"], r * 0.15), TABLE_W - r * 0.15)
-        ball["y"] = min(max(ball["y"], r * 0.15), TABLE_H - r * 0.15)
+        nx = min(max(ball["x"], r * 0.05), TABLE_W - r * 0.05)
+        ny = min(max(ball["y"], r * 0.05), TABLE_H - r * 0.05)
+        if nx != ball["x"] or ny != ball["y"]:
+            ball["x"], ball["y"] = nx, ny
+    return hit
 
 
-def _separate(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    if a.get("pocketed") or b.get("pocketed"):
-        return False
+def _collide_pair(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Импульс + позиционная коррекция. Полностью детерминировано."""
     dx = b["x"] - a["x"]
     dy = b["y"] - a["y"]
-    dist = math.hypot(dx, dy)
-    min_d = BALL_R * 2
-    if dist >= min_d - 1e-12:
-        return False
-    if dist < 1e-12:
-        # совпали центры — толкнуть в случайном направлении
-        ang = random.random() * math.tau
-        dx, dy = math.cos(ang), math.sin(ang)
-        dist = 1e-12
+    dist2 = dx * dx + dy * dy
+    min_d = BALL_R * 2.0
+    min_d2 = min_d * min_d
+    if dist2 >= min_d2 or dist2 <= 0.0:
+        if dist2 <= 0.0:
+            # жёсткий детерминированный сдвиг по id
+            dx, dy = (1.0, 0.0) if a["id"] < b["id"] else (-1.0, 0.0)
+            dist2 = 1e-16
+        else:
+            return False
+
+    dist = math.sqrt(dist2)
     nx, ny = dx / dist, dy / dist
     overlap = min_d - dist
-    push = overlap * 0.5 + 1e-5
-    a["x"] -= nx * push
-    a["y"] -= ny * push
-    b["x"] += nx * push
-    b["y"] += ny * push
-    return True
+    hit = False
 
+    # позиционная коррекция только при реальном пересечении
+    if overlap > SLOP:
+        corr = (overlap - SLOP) * BAUMGARTE
+        # если оба спят — почти не двигаем (стабильная пирамида)
+        if a.get("sleep") and b.get("sleep"):
+            corr *= 0.15
+        a["x"] -= nx * corr * 0.5
+        a["y"] -= ny * corr * 0.5
+        b["x"] += nx * corr * 0.5
+        b["y"] += ny * corr * 0.5
+        hit = True
 
-def _collide(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    """Упругий удар равных масс + позиционная коррекция."""
-    if a.get("pocketed") or b.get("pocketed"):
-        return False
-    dx = b["x"] - a["x"]
-    dy = b["y"] - a["y"]
-    dist = math.hypot(dx, dy)
-    min_d = BALL_R * 2
-    if dist >= min_d - 1e-12:
-        return False
-    if dist < 1e-12:
-        ang = random.random() * math.tau
-        dx, dy = math.cos(ang), math.sin(ang)
-        dist = 1e-12
-    nx, ny = dx / dist, dy / dist
-    overlap = min_d - dist
-    push = overlap * 0.5 + 1e-5
-    a["x"] -= nx * push
-    a["y"] -= ny * push
-    b["x"] += nx * push
-    b["y"] += ny * push
-
-    # vn > 0 — сближаются вдоль нормали a→b
     dvx = a["vx"] - b["vx"]
     dvy = a["vy"] - b["vy"]
     vn = dvx * nx + dvy * ny
-    if vn <= 0:
-        return True
-    impulse = -(1.0 + RESTITUTION) * vn / 2.0
-    tx, ty = -ny, nx
-    vt = dvx * tx + dvy * ty
-    friction_imp = max(-abs(impulse) * 0.12, min(abs(impulse) * 0.12, -vt * 0.08))
-    a["vx"] += impulse * nx + friction_imp * tx
-    a["vy"] += impulse * ny + friction_imp * ty
-    b["vx"] -= impulse * nx + friction_imp * tx
-    b["vy"] -= impulse * ny + friction_imp * ty
+    if vn <= 0.0:
+        return hit
+
+    # спящие просыпаются при ударе
+    _wake(a)
+    _wake(b)
+
+    # равные массы
+    e = RESTITUTION
+    # почти покоящийся контакт — меньше «взрыва» пирамиды от шума
+    if vn < 0.04 and _speed(a) < 0.08 and _speed(b) < 0.08:
+        e = 0.55
+    impulse = -(1.0 + e) * vn / 2.0
+    a["vx"] += impulse * nx
+    a["vy"] += impulse * ny
+    b["vx"] -= impulse * nx
+    b["vy"] -= impulse * ny
     _clamp_speed(a)
     _clamp_speed(b)
     return True
 
 
-def _resolve_overlaps(balls: list[dict[str, Any]]) -> None:
-    """Только позиционная коррекция — без лишних импульсов."""
+def _solve(balls: list[dict[str, Any]]) -> None:
     alive = _alive(balls)
-    for _ in range(COLLISION_ITERS):
-        moved = False
+    for _ in range(SOLVER_ITERS):
         for i in range(len(alive)):
             for j in range(i + 1, len(alive)):
-                if _separate(alive[i], alive[j]):
-                    moved = True
-        for b in alive:
-            _cushion(b)
-        if not moved:
-            break
+                _collide_pair(alive[i], alive[j])
+        for ball in alive:
+            _cushion(ball)
 
 
 def _snapshot(balls: list[dict[str, Any]]) -> list[list[float | int | None]]:
@@ -360,9 +365,11 @@ def _snapshot(balls: list[dict[str, Any]]) -> list[list[float | int | None]]:
     return out
 
 
-def _any_moving(balls: list[dict[str, Any]]) -> bool:
+def _any_awake(balls: list[dict[str, Any]]) -> bool:
     for b in _alive(balls):
-        if abs(b["vx"]) > MIN_SPEED or abs(b["vy"]) > MIN_SPEED:
+        if not b.get("sleep") and _speed(b) > MIN_SPEED:
+            return True
+        if _speed(b) > MIN_SPEED:
             return True
     return False
 
@@ -373,58 +380,72 @@ def _simulate(st: dict[str, Any], angle: float, power: float) -> dict[str, Any]:
     if cue["pocketed"]:
         _place_cue_safe(st)
 
-    # перед ударом убрать микровложения в пирамиде
-    _resolve_overlaps(balls)
+    # гарантировать ключ sleep у старых комнат
+    for ball in balls:
+        if "sleep" not in ball:
+            ball["sleep"] = _speed(ball) < SLEEP_SPEED
 
-    power = max(0.08, min(1.0, power))
-    # кривая силы: слабые удары точнее, разбой — мощнее
-    speed = (0.18 + 0.82 * (power ** 1.15)) * MAX_SPEED
+    power = max(0.08, min(1.0, float(power)))
+    # кривая силы: разбой мощный
+    speed = (0.22 + 0.78 * (power ** 1.05)) * MAX_SPEED
     cue["vx"] = math.cos(angle) * speed
     cue["vy"] = math.sin(angle) * speed
+    cue["sleep"] = False
 
     frames: list[list[list[float | int | None]]] = [_snapshot(balls)]
     pocketed_now: list[int] = []
     first_hit: int | None = None
     acc_frame = 0.0
     t = 0.0
+    idle_steps = 0
 
-    while t < MAX_TIME and _any_moving(balls):
-        # адаптивный подшаг: быстрые шары — мельче dt
+    while t < MAX_TIME:
+        if not _any_awake(balls):
+            idle_steps += 1
+            if idle_steps > 4:
+                break
+        else:
+            idle_steps = 0
+
         max_sp = 0.0
-        for b in _alive(balls):
-            max_sp = max(max_sp, math.hypot(b["vx"], b["vy"]))
+        for ball in _alive(balls):
+            if not ball.get("sleep"):
+                max_sp = max(max_sp, _speed(ball))
+        # адаптивный подшаг: быстро — ещё мельче
         step = DT
-        if max_sp > 0:
-            # не больше ~35% диаметра за шаг
-            step = min(DT, (BALL_R * 0.7) / max_sp)
-        step = max(step, DT * 0.25)
+        if max_sp > 1e-9:
+            step = min(DT, (BALL_R * 0.45) / max_sp)
+        step = max(step, DT * 0.2)
 
-        for b in _alive(balls):
-            b["x"] += b["vx"] * step
-            b["y"] += b["vy"] * step
-            _apply_friction(b, step)
-            _cushion(b)
+        for ball in _alive(balls):
+            if ball.get("sleep"):
+                continue
+            ball["x"] += ball["vx"] * step
+            ball["y"] += ball["vy"] * step
+            _friction(ball, step)
 
-        # коллизии шар–шар + повторная коррекция бортов
-        alive = _alive(balls)
-        for i in range(len(alive)):
-            for j in range(i + 1, len(alive)):
-                ai, aj = alive[i], alive[j]
-                touching = _dist(ai, aj) <= BALL_R * 2.02
-                if touching and first_hit is None and (ai["id"] == 0 or aj["id"] == 0):
-                    other = aj if ai["id"] == 0 else ai
-                    first_hit = other["id"]
-                _collide(ai, aj)
-        for b in alive:
-            _cushion(b)
-        # второй проход — убрать остаточные пересечения
-        _resolve_overlaps(balls)
+        # первый контакт битка
+        if first_hit is None:
+            cue_b = _cue(st)
+            if not cue_b["pocketed"]:
+                for other in _alive(balls):
+                    if other["id"] == 0:
+                        continue
+                    if _dist(cue_b, other) <= BALL_R * 2.02:
+                        first_hit = other["id"]
+                        break
 
-        for b in list(_alive(balls)):
-            if _pocket_check(b):
-                b["pocketed"] = True
-                b["vx"] = b["vy"] = 0.0
-                pocketed_now.append(b["id"])
+        _solve(balls)
+
+        for ball in list(_alive(balls)):
+            if _pocket_check(ball):
+                ball["pocketed"] = True
+                ball["vx"] = ball["vy"] = 0.0
+                ball["sleep"] = True
+                pocketed_now.append(ball["id"])
+
+        for ball in _alive(balls):
+            _maybe_sleep(ball)
 
         t += step
         acc_frame += step
@@ -432,16 +453,41 @@ def _simulate(st: dict[str, Any], angle: float, power: float) -> dict[str, Any]:
             acc_frame = 0.0
             frames.append(_snapshot(balls))
             if len(frames) >= MAX_FRAMES:
-                frames = frames[::2][: MAX_FRAMES]
+                # проредить равномерно
+                keep = [frames[int(i * (len(frames) - 1) / (MAX_FRAMES - 1))] for i in range(MAX_FRAMES)]
+                frames = keep
 
-    # добить остаточные пересечения и стоп
-    for b in _alive(balls):
-        b["vx"] = b["vy"] = 0.0
-    _resolve_overlaps(balls)
+    for ball in _alive(balls):
+        ball["vx"] = ball["vy"] = 0.0
+        ball["sleep"] = True
+    # финальная стабилизация без импульсов — только лёгкое разведение
+    for _ in range(8):
+        alive = _alive(balls)
+        moved = False
+        for i in range(len(alive)):
+            for j in range(i + 1, len(alive)):
+                a, c = alive[i], alive[j]
+                dx = c["x"] - a["x"]
+                dy = c["y"] - a["y"]
+                dist = math.hypot(dx, dy)
+                min_d = BALL_R * 2.0
+                if 0 < dist < min_d - SLOP:
+                    nx, ny = dx / dist, dy / dist
+                    push = (min_d - dist) * 0.5
+                    a["x"] -= nx * push
+                    a["y"] -= ny * push
+                    c["x"] += nx * push
+                    c["y"] += ny * push
+                    moved = True
+        for ball in alive:
+            _cushion(ball)
+        if not moved:
+            break
+
     frames.append(_snapshot(balls))
     if len(frames) > MAX_FRAMES:
-        step_i = max(1, len(frames) // MAX_FRAMES)
-        frames = frames[::step_i][:MAX_FRAMES]
+        keep = [frames[int(i * (len(frames) - 1) / (MAX_FRAMES - 1))] for i in range(MAX_FRAMES)]
+        frames = keep
 
     return {"frames": frames, "pocketed": pocketed_now, "first_hit": first_hit}
 
@@ -453,6 +499,7 @@ def _resolve_shot(room: dict[str, Any], slot: str, result: dict[str, Any]) -> No
     st["last_pocketed"] = pocketed
     st["scratch"] = scratch
     st["frames"] = result["frames"]
+    st["shot_id"] = int(st.get("shot_id") or 0) + 1
     st["animating"] = False
     st["phase"] = "playing"
 
@@ -493,7 +540,6 @@ def _resolve_shot(room: dict[str, Any], slot: str, result: dict[str, Any]) -> No
             elif bg and bg != g:
                 foul_other = True
         st["scores"][slot] = int(st["scores"].get(slot) or 0) + len(good)
-
         if good and not scratch and not foul_other:
             room["turn"] = slot
             room["message"] = f"{room['players'][slot]['name']} забил — ход продолжается"
@@ -529,11 +575,13 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
         cue["x"], cue["y"] = x, y
         cue["pocketed"] = False
         cue["vx"] = cue["vy"] = 0.0
+        cue["sleep"] = True
         if any(_dist(cue, b) < BALL_R * 2.08 for b in _alive(st["balls"]) if b["id"] != 0):
             return False, "Слишком близко к другому шару"
         if _pocket_check(cue):
             return False, "Нельзя ставить биток в лузу"
         st["ball_in_hand"] = False
+        st["frames"] = []
         room["message"] = f"{room['players'][slot]['name']} поставил биток — можно бить"
         return True, "ok"
 
@@ -546,9 +594,8 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
         power = float(action.get("power"))
     except (TypeError, ValueError):
         return False, "Нужны угол и сила"
-    power = max(0.08, min(1.0, power))
     st["frames"] = []
-    result = _simulate(st, angle, power)
+    result = _simulate(st, angle, max(0.08, min(1.0, power)))
     _resolve_shot(room, slot, result)
     return True, "ok"
 
@@ -575,6 +622,7 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "scores": st["scores"],
         "groups": st["groups"],
         "frames": st.get("frames") or [],
+        "shot_id": int(st.get("shot_id") or 0),
         "last_pocketed": st.get("last_pocketed") or [],
         "scratch": bool(st.get("scratch")),
         "ball_in_hand": bool(st.get("ball_in_hand")),
@@ -601,30 +649,31 @@ def ai_action(room: dict[str, Any], slot: str) -> dict[str, Any] | None:
     if st.get("ball_in_hand"):
         _place_cue_safe(st)
         st["ball_in_hand"] = False
-        return {"type": "place_cue", "x": _cue(st)["x"], "y": _cue(st)["y"]}
+        cue = _cue(st)
+        return {"type": "place_cue", "x": cue["x"], "y": cue["y"]}
     cue = _cue(st)
     if cue["pocketed"]:
         return None
     g = st["groups"].get(slot)
     targets = []
-    for b in _alive(st["balls"]):
-        if b["id"] == 0:
+    for ball in _alive(st["balls"]):
+        if ball["id"] == 0:
             continue
-        if b["id"] == 8:
+        if ball["id"] == 8:
             if _remaining(st, slot) == 0 and g:
-                targets.append(b)
+                targets.append(ball)
             continue
-        bg = _group_of(b["id"])
+        bg = _group_of(ball["id"])
         if not g or bg == g:
-            targets.append(b)
+            targets.append(ball)
     if not targets:
-        targets = [b for b in _alive(st["balls"]) if b["id"] not in (0, 8)]
+        targets = [ball for ball in _alive(st["balls"]) if ball["id"] not in (0, 8)]
     if not targets:
-        targets = [b for b in _alive(st["balls"]) if b["id"] == 8]
+        targets = [ball for ball in _alive(st["balls"]) if ball["id"] == 8]
     if not targets:
         return None
-    t = min(targets, key=lambda b: math.hypot(b["x"] - cue["x"], b["y"] - cue["y"]))
+    t = min(targets, key=lambda ball: math.hypot(ball["x"] - cue["x"], ball["y"] - cue["y"]))
     angle = math.atan2(t["y"] - cue["y"], t["x"] - cue["x"])
-    angle += random.uniform(-0.06, 0.06)
-    power = random.uniform(0.4, 0.8)
+    angle += random.uniform(-0.05, 0.05)
+    power = random.uniform(0.45, 0.85)
     return {"type": "shot", "angle": angle, "power": power}
