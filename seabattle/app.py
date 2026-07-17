@@ -333,8 +333,7 @@ def schedule_ai(room: dict[str, Any]) -> None:
     """Отложить ход робота ~на секунду, чтобы не ходил мгновенно."""
     if not room.get("vs_ai"):
         return
-    delay = 0.25 if room.get("game") == "stackrace" else AI_THINK_SEC
-    room["ai_due"] = time.time() + delay
+    room["ai_due"] = time.time() + AI_THINK_SEC
 
 
 def ai_should_act(room: dict[str, Any]) -> bool:
@@ -343,9 +342,6 @@ def ai_should_act(room: dict[str, Any]) -> bool:
     ai_slot = room.get("ai_slot") or "p2"
     if room["game"] == "seabattle" and room["phase"] == "placing":
         return not bool(room["state"]["ready"].get(ai_slot))
-    if room["game"] == "stackrace" and room["phase"] == "playing":
-        pl = (room.get("state") or {}).get("players", {}).get(ai_slot) or {}
-        return bool(pl.get("alive"))
     return room["phase"] == "playing" and room.get("turn") == ai_slot
 
 
@@ -368,8 +364,7 @@ def run_ai_turns(room: dict[str, Any]) -> None:
         return
 
     acted = False
-    max_steps = 12 if room.get("game") == "stackrace" else 60
-    for _ in range(max_steps):
+    for _ in range(60):
         if room["phase"] == "done":
             break
 
@@ -388,23 +383,6 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 
         if room["phase"] != "playing":
             break
-
-        if room["game"] == "stackrace":
-            pl = (room.get("state") or {}).get("players", {}).get(ai_slot) or {}
-            if not pl.get("alive"):
-                break
-            action = mod.ai_action(room, ai_slot)
-            if not action:
-                break
-            ok, _ = mod.apply_action(room, ai_slot, action)
-            if not ok:
-                break
-            acted = True
-            # одна «серия» движений за poll, потом пауза
-            if action.get("type") == "hard":
-                break
-            continue
-
         if room.get("turn") != ai_slot:
             break
 
@@ -420,8 +398,6 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 
     if acted:
         room.pop("ai_due", None)
-        if room.get("game") == "stackrace" and ai_should_act(room):
-            schedule_ai(room)
     elif ai_should_act(room) and not room.get("ai_due"):
         # ещё должен ходить, но хода не вышло — не крутимся; ждём следующий poll
         schedule_ai(room)

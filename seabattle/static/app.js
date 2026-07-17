@@ -7,7 +7,6 @@ const GAME_ICONS = {
   durak: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="2.2"/><path d="M12 8.2c-.9-1.3-2.5-1.2-2.5.2 0 1.4 2.5 3.4 2.5 3.4s2.5-2 2.5-3.4c0-1.4-1.6-1.5-2.5-.2Z" fill="currentColor" stroke="none"/><path d="M9.2 17.8h5.6" stroke-linecap="round"/></svg>`,
   blik: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="10" height="14" rx="2" transform="rotate(-8 9 12)"/><rect x="10" y="5" width="10" height="14" rx="2" transform="rotate(10 15 12)"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>`,
   hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
-  stackrace: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="7" height="18" rx="1.2"/><rect x="13" y="3" width="7" height="18" rx="1.2"/><rect x="5.2" y="14" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="7.4" y="14" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="5.2" y="16.2" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="14.2" y="11" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="16.4" y="11" width="1.8" height="1.8" fill="currentColor" stroke="none"/><rect x="16.4" y="13.2" width="1.8" height="1.8" fill="currentColor" stroke="none"/></svg>`,
 };
 
 const ANIMALS = [
@@ -32,12 +31,6 @@ const GAMES = {
   durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
   blik: {title:'OUNO', blurb:'Сбрось карты по цвету или знаку — 2–4 игрока'},
   hangman: {title:'Виселица', blurb:'Отгадай слово по буквам — соло'},
-  stackrace: {title:'Стек-дуэль', blurb:'Два поля — кто наберёт больше очков', hidden:true},
-};
-
-// секретный вход в скрытую игру (не светится в сетке)
-const SECRET_PLAY = {
-  'fallduel-k9m2qx': 'stackrace',
 };
 
 const PRESETS = {
@@ -152,25 +145,16 @@ async function api(path, opts={}){
 }
 
 let roomMisses = 0;
-let pollMs = 900;
 
-function startPoll(forceMs){
-  const want = forceMs != null
-    ? forceMs
-    : ((state && state.game==='stackrace' && state.phase==='playing') ? 280 : 900);
-  if(pollTimer && pollMs === want) return;
+function startPoll(){
   stopPoll();
   roomMisses = 0;
-  pollMs = want;
   pollTimer = setInterval(async ()=>{
     if(!code||!token) return;
     try{
       const data = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
       roomMisses = 0;
       applyState(data.state);
-      if(data.state && data.state.game==='stackrace' && data.state.phase==='playing' && pollMs!==280){
-        startPoll(280);
-      }
     }catch(e){
       const msg = String(e.message||'');
       if(msg.includes('не найдена') || msg.includes('Не найдена')){
@@ -195,7 +179,7 @@ function startPoll(forceMs){
         }
       }
     }
-  }, pollMs);
+  }, 900);
 }
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
@@ -214,7 +198,6 @@ function playerName(el){ return (el.value.trim() || randomAnimal()); }
 
 function needsPrivacy(game){
   // экран «я за экраном» — морской бой и карты (скрытая рука)
-  // стек-дуэль на одном устройстве — оба поля сразу, без handover
   return game==='seabattle' || game==='durak' || game==='blik';
 }
 
@@ -289,10 +272,6 @@ function renderHandover(s, nextSlot){
 
 function isMyAction(s){
   if(!s) return false;
-  if(s.game==='stackrace' && s.phase==='playing'){
-    const you = s.game_state && s.game_state.you;
-    return !!(you && you.alive);
-  }
   if(s.phase==='placing'){
     if(!s.you) return false;
     const ready = (s.game_state && s.game_state.ready) || {};
@@ -361,7 +340,7 @@ function applyState(s, opts={}){
   lastSettings.vsLocal = !!s.vs_local;
   vsLocal = !!s.vs_local;
 
-  if(vsLocal && s.game!=='stackrace' && s.phase!=='lobby' && s.phase!=='done' && !opts.skipHandover){
+  if(vsLocal && s.phase!=='lobby' && s.phase!=='done' && !opts.skipHandover){
     const need = desiredHotseatSlot(s);
     if(need && hotseatSlot !== need){
       if(needsPrivacy(s.game)){
@@ -425,7 +404,7 @@ function applyState(s, opts={}){
     setPlayStatus(s, who + (s.message || ''));
     setWinChance(s);
     renderGame(s);
-    startPoll();
+    if(!pollTimer) startPoll();
     // после рендера доски ещё раз — на случай гонки с poll
     setPlayStatus(s, who + (s.message || ''));
   } else if(s.phase==='done'){
@@ -497,7 +476,6 @@ function renderGame(s){
   if(s.game==='durak') return renderDurak(mount, s);
   if(s.game==='blik') return renderBlik(mount, s);
   if(s.game==='hangman') return renderHangman(mount, s);
-  if(s.game==='stackrace') return renderStackrace(mount, s);
 }
 
 /* ===== Sea battle ===== */
@@ -729,143 +707,6 @@ function drawSBGrid(el, matrix, clickable, enabled){
     if(clickable&&enabled&&v===0) d.onclick=()=>doAction({type:'shot',x,y});
     el.appendChild(d);
   }
-}
-
-/* ===== Stack race (скрытая стек-дуэль) ===== */
-const SR_COLORS = {
-  1:'#67e8f9', 2:'#fde047', 3:'#c084fc', 4:'#4ade80',
-  5:'#fb7185', 6:'#60a5fa', 7:'#fb923c'
-};
-let srBusy = false;
-let srKeysBound = false;
-
-async function doActionAs(slotToken, payload){
-  if(!code || !slotToken) return;
-  if(srBusy && state && state.game==='stackrace') return;
-  srBusy = true;
-  try{
-    const data = await api(`/api/room/${code}/action`, {
-      method:'POST',
-      body:JSON.stringify({token:slotToken, ...payload})
-    });
-    applyState(data.state);
-  }catch(e){
-    if($('playErr')) $('playErr').textContent = e.message;
-  }finally{
-    srBusy = false;
-  }
-}
-
-function srBoardHtml(board, w, h, dimmed){
-  const cells = [];
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      const v = (board[y]&&board[y][x]) || 0;
-      let cls = 'sr-cell';
-      let style = '';
-      if(v > 0){
-        cls += ' filled';
-        style = `background:${SR_COLORS[v]||'#a1a1aa'}`;
-      } else if(v < 0){
-        cls += ' ghost';
-        style = `background:${SR_COLORS[-v]||'#a1a1aa'}`;
-      }
-      cells.push(`<div class="${cls}" style="${style}"></div>`);
-    }
-  }
-  return `<div class="sr-grid${dimmed?' dim':''}" style="grid-template-columns:repeat(${w},1fr)">${cells.join('')}</div>`;
-}
-
-function srNextHtml(kind){
-  if(!kind) return '<div class="sr-next empty">—</div>';
-  return `<div class="sr-next" data-kind="${kind}"><span>${kind}</span></div>`;
-}
-
-function renderStackrace(mount, s){
-  const gs = s.game_state || {};
-  const you = gs.you || {board:[], score:0, lines:0, level:1, alive:true, w:10, h:20};
-  const enemy = gs.enemy || {board:[], score:0, lines:0, level:1, alive:true, w:10, h:20};
-  const w = you.w || 10, h = you.h || 20;
-  const local = !!s.vs_local;
-  const meName = s.your_name || 'Ты';
-  const oppSlot = gs.enemy_slot || (s.you==='p1'?'p2':'p1');
-  const oppName = (s.players && s.players[oppSlot] && s.players[oppSlot].name) || 'Соперник';
-
-  mount.innerHTML = `
-    <div class="sr-wrap">
-      <div class="sr-hint">${local
-        ? 'Слева ←↑→ / пробел · справа WASD / Shift'
-        : '← → поворот↑ · вниз мягко · пробел жёстко'}</div>
-      <div class="sr-duel">
-        <div class="sr-side me">
-          <div class="sr-meta">
-            <strong>${escapeHtml(meName)}</strong>
-            <span>${you.score|0} оч · ур.${you.level|0}</span>
-            ${you.alive?'':'<em class="sr-out">выбыл</em>'}
-          </div>
-          ${srBoardHtml(you.board||[], w, h, !you.alive)}
-          <div class="sr-side-foot">След.: ${srNextHtml(you.next)}</div>
-        </div>
-        <div class="sr-side opp">
-          <div class="sr-meta">
-            <strong>${escapeHtml(oppName)}</strong>
-            <span>${enemy.score|0} оч · ур.${enemy.level|0}</span>
-            ${enemy.alive?'':'<em class="sr-out">выбыл</em>'}
-          </div>
-          ${srBoardHtml(enemy.board||[], w, h, true)}
-        </div>
-      </div>
-      ${s.phase==='playing' ? `<div class="sr-pad">
-        <button type="button" class="btn ghost" data-sr="left">←</button>
-        <button type="button" class="btn ghost" data-sr="rotate">↻</button>
-        <button type="button" class="btn ghost" data-sr="right">→</button>
-        <button type="button" class="btn ghost" data-sr="soft">↓</button>
-        <button type="button" class="btn" data-sr="hard">▼</button>
-      </div>` : ''}
-    </div>`;
-
-  mount.querySelectorAll('[data-sr]').forEach(btn=>{
-    btn.onclick = ()=>{
-      if(s.phase!=='playing') return;
-      doActionAs(token, {type: btn.getAttribute('data-sr')});
-    };
-  });
-  bindStackraceKeys();
-}
-
-function bindStackraceKeys(){
-  if(srKeysBound) return;
-  srKeysBound = true;
-  document.addEventListener('keydown', (e)=>{
-    if(!state || state.game!=='stackrace' || state.phase!=='playing') return;
-    if(e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
-    const local = !!state.vs_local;
-    let act = null;
-    let slotTok = token;
-    const k = e.key;
-    if(local){
-      if(k==='ArrowLeft'){ act='left'; slotTok=tokens.p1; }
-      else if(k==='ArrowRight'){ act='right'; slotTok=tokens.p1; }
-      else if(k==='ArrowUp'){ act='rotate'; slotTok=tokens.p1; }
-      else if(k==='ArrowDown'){ act='soft'; slotTok=tokens.p1; }
-      else if(k===' ' || k==='Spacebar'){ act='hard'; slotTok=tokens.p1; }
-      else if(k==='a' || k==='A' || k==='ф' || k==='Ф'){ act='left'; slotTok=tokens.p2; }
-      else if(k==='d' || k==='D' || k==='в' || k==='В'){ act='right'; slotTok=tokens.p2; }
-      else if(k==='w' || k==='W' || k==='ц' || k==='Ц'){ act='rotate'; slotTok=tokens.p2; }
-      else if(k==='s' || k==='S' || k==='ы' || k==='Ы'){ act='soft'; slotTok=tokens.p2; }
-      else if(k==='Shift'){ act='hard'; slotTok=tokens.p2; }
-    } else {
-      if(k==='ArrowLeft') act='left';
-      else if(k==='ArrowRight') act='right';
-      else if(k==='ArrowUp') act='rotate';
-      else if(k==='ArrowDown') act='soft';
-      else if(k===' ' || k==='Spacebar') act='hard';
-      else if(k==='z' || k==='Z' || k==='я' || k==='Я') act='rotate_ccw';
-    }
-    if(!act) return;
-    e.preventDefault();
-    doActionAs(slotTok || token, {type: act});
-  });
 }
 
 /* ===== TicTacToe ===== */
@@ -1768,27 +1609,7 @@ async function shareInvite(){
 
 if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
 
-function readSecretPlayFromUrl(){
-  try{
-    const u = new URL(location.href);
-    const play = (u.searchParams.get('play')||'').trim();
-    if(play && SECRET_PLAY[play]){
-      u.searchParams.delete('play');
-      history.replaceState({}, '', u.pathname + (u.search||'') + (u.hash||''));
-      return SECRET_PLAY[play];
-    }
-  }catch(_){}
-  return '';
-}
-
 (async function boot(){
-  const secretGame = readSecretPlayFromUrl();
-  if(secretGame){
-    chosenGame = secretGame;
-    openSetup(secretGame);
-    if($('setupErr')) $('setupErr').textContent = 'Скрытая игра · создай комнату и поделись кодом с другом';
-  }
-
   const pendingJoin = readJoinCodeFromUrl();
   if(pendingJoin){
     const prev = LS.get();

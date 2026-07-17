@@ -1,6 +1,6 @@
 """Game engines for lobby multiplayer."""
 
-from . import backgammon, blik, checkers, chess, durak, hangman, seabattle, stackrace, tictactoe
+from . import backgammon, blik, checkers, chess, durak, hangman, seabattle, tictactoe
 
 GAMES = {
     "seabattle": {
@@ -42,13 +42,6 @@ GAMES = {
         "title": "Виселица",
         "blurb": "Отгадай слово по буквам — соло",
         "module": hangman,
-    },
-    # скрытая игра: не показывается в сетке лобби, вход только по секретной ссылке
-    "stackrace": {
-        "title": "Стек-дуэль",
-        "blurb": "Два поля — кто наберёт больше очков",
-        "module": stackrace,
-        "hidden": True,
     },
 }
 
