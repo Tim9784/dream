@@ -186,6 +186,16 @@ def _handle_message(token: str, cfg: dict[str, Any], msg: dict[str, Any]) -> Non
 
 
 def main() -> None:
+    # На VPS часто ломается IPv6 до api.telegram.org — только IPv4.
+    import socket
+
+    _orig_getaddrinfo = socket.getaddrinfo
+
+    def _ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):  # noqa: A002
+        return _orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+    socket.getaddrinfo = _ipv4_getaddrinfo  # type: ignore[assignment]
+
     cfg = _load_config()
     token = (
         os.environ.get("TELEGRAM_BOT_TOKEN")
