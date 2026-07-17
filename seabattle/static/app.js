@@ -531,6 +531,12 @@ function playBilliardFrames(s, frames){
   return new Promise(resolve=>{
     const mount = $('gameMount');
     if(!mount || BQ.animating){ resolve(); return; }
+    // если стол ещё не смонтирован — один тихий рендер без сброса aim
+    if(!mount.querySelector('#bqCanvas')){
+      const prev = lastPlaySig;
+      renderBilliard(mount, s);
+      lastPlaySig = prev;
+    }
     BQ.animating = true;
     let i = 0;
     const tick = ()=>{
@@ -550,29 +556,36 @@ function billiardCue(gs){
 function billiardAimLine(gs, angle, power){
   const cue = billiardCue(gs);
   if(!cue || cue.pocketed || cue.x==null) return null;
-  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.029;
+  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.0285;
+  const mouth = 0.062, sideMouth = 0.070;
+  const nearGapX = (x)=>{
+    if(x <= mouth || x >= tw - mouth) return true;
+    return Math.abs(x - tw/2) <= sideMouth;
+  };
+  const nearGapY = (y)=> y <= mouth || y >= th - mouth;
   let x = cue.x, y = cue.y;
   let dx = Math.cos(angle), dy = Math.sin(angle);
   const pts = [[x,y]];
   const others = (gs.balls||[]).filter(b=>!b.pocketed && !b.cue && b.x!=null);
-  for(let step=0; step<180; step++){
-    x += dx * 0.012; y += dy * 0.012;
-    // cushion
-    if(x < r){ x=r; dx=Math.abs(dx); pts.push([x,y]); }
-    else if(x > tw-r){ x=tw-r; dx=-Math.abs(dx); pts.push([x,y]); }
-    if(y < r){ y=r; dy=Math.abs(dy); pts.push([x,y]); }
-    else if(y > th-r){ y=th-r; dy=-Math.abs(dy); pts.push([x,y]); }
+  const step = r * 0.35;
+  for(let i=0; i<220; i++){
+    x += dx * step; y += dy * step;
+    // борта с проёмами луз
+    if(x < r && !nearGapY(y)){ x=r; dx=Math.abs(dx); pts.push([x,y]); }
+    else if(x > tw-r && !nearGapY(y)){ x=tw-r; dx=-Math.abs(dx); pts.push([x,y]); }
+    if(y < r && !nearGapX(x)){ y=r; dy=Math.abs(dy); pts.push([x,y]); }
+    else if(y > th-r && !nearGapX(x)){ y=th-r; dy=-Math.abs(dy); pts.push([x,y]); }
     for(const b of others){
       const d = Math.hypot(x-b.x, y-b.y);
       if(d <= r*2){
         pts.push([x,y]);
-        // ghost target direction approx
         const nx=(b.x-x)/(d||1), ny=(b.y-y)/(d||1);
-        pts.push([b.x + nx*r*3.2, b.y + ny*r*3.2]);
+        // направление цели после удара (приблизительно)
+        pts.push([b.x + nx*r*3.5, b.y + ny*r*3.5]);
         return {pts, hit:b, power};
       }
     }
-    if(step%6===0) pts.push([x,y]);
+    if(i%5===0) pts.push([x,y]);
   }
   pts.push([x,y]);
   return {pts, hit:null, power};
