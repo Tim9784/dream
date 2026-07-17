@@ -295,6 +295,16 @@ html[data-theme="light"] .lobby-player.me{background:rgba(0,0,0,.04);border:1px 
 .hidden{display:none!important}
 .err{color:var(--err);text-align:center;margin-top:8px;min-height:1.2em}
 .footer{text-align:center;color:var(--footer);font-size:.85rem;margin-top:16px}
+.site-footer{
+  margin-top:28px;padding-top:18px;border-top:1px solid var(--line);
+  text-align:center;
+}
+.bugreport-link{
+  color:var(--soft);font-size:.9rem;font-weight:600;text-decoration:none;
+  border-bottom:1px dashed color-mix(in srgb, var(--soft) 55%, transparent);
+  padding-bottom:2px;transition:color .15s ease,border-color .15s ease;
+}
+.bugreport-link:hover{color:var(--heading);border-bottom-color:var(--heading)}
 .topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
 .topbar strong{font-family:'Syne',sans-serif;font-size:1.15rem;letter-spacing:-.02em}
 .boards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
