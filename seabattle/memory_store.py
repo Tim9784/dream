@@ -322,3 +322,247 @@ class FileStore:
             yielded += 1
             if yielded >= count:
                 break
+
+
+class MySQLStore:
+    """Ключ-значение в MySQL (тот же API, что у Redis/FileStore)."""
+
+    def __init__(
+        self,
+        host: str,
+        user: str,
+        password: str,
+        database: str,
+        port: int = 3306,
+        table: str = "omove_kv",
+    ) -> None:
+        self.host = host
+        self.user = user
+        self.password = password
+        self.database = database
+        self.port = int(port or 3306)
+        self.table = table
+        self._thread = threading.Lock()
+        self._ensure_schema()
+
+    def _connect(self):
+        try:
+            import pymysql
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("pymysql не установлен") from exc
+        return pymysql.connect(
+            host=self.host,
+            user=self.user,
+            password=self.password,
+            database=self.database,
+            port=self.port,
+            charset="utf8mb4",
+            autocommit=True,
+            connect_timeout=10,
+            read_timeout=30,
+            write_timeout=30,
+        )
+
+    def _ensure_schema(self) -> None:
+        ddl = f"""
+        CREATE TABLE IF NOT EXISTS `{self.table}` (
+          `k` VARCHAR(191) NOT NULL,
+          `v` LONGTEXT NOT NULL,
+          `exp` DOUBLE NULL,
+          `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (`k`),
+          KEY `idx_exp` (`exp`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(ddl)
+
+    def _encode(self, value: Any) -> str:
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+    def _decode(self, raw: Any) -> Any:
+        if raw is None:
+            return None
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="replace")
+        try:
+            return json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return raw
+
+    def _purge_expired(self, cur, key: str | None = None) -> None:
+        now = time.time()
+        if key is None:
+            cur.execute(
+                f"DELETE FROM `{self.table}` WHERE `exp` IS NOT NULL AND `exp` <= %s",
+                (now,),
+            )
+        else:
+            cur.execute(
+                f"DELETE FROM `{self.table}` WHERE `k`=%s AND `exp` IS NOT NULL AND `exp` <= %s",
+                (key, now),
+            )
+
+    def ping(self) -> bool:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                cur.fetchone()
+        return True
+
+    def get(self, key: str) -> Any:
+        with self._thread:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    self._purge_expired(cur, key)
+                    cur.execute(
+                        f"SELECT `v`, `exp` FROM `{self.table}` WHERE `k`=%s LIMIT 1",
+                        (key,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return None
+                    value, exp = row[0], row[1]
+                    if exp is not None and float(exp) <= time.time():
+                        cur.execute(f"DELETE FROM `{self.table}` WHERE `k`=%s", (key,))
+                        return None
+                    return self._decode(value)
+
+    def setex(self, key: str, ttl: int, value: Any) -> bool:
+        exp = time.time() + max(1, int(ttl))
+        payload = self._encode(value)
+        with self._thread:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"""
+                        INSERT INTO `{self.table}` (`k`, `v`, `exp`)
+                        VALUES (%s, %s, %s)
+                        ON DUPLICATE KEY UPDATE `v`=VALUES(`v`), `exp`=VALUES(`exp`)
+                        """,
+                        (key, payload, exp),
+                    )
+        return True
+
+    def delete(self, *keys: str) -> int:
+        if not keys:
+            return 0
+        with self._thread:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    deleted = 0
+                    for key in keys:
+                        cur.execute(f"DELETE FROM `{self.table}` WHERE `k`=%s", (key,))
+                        deleted += int(cur.rowcount or 0)
+                    return deleted
+
+    def exists(self, key: str) -> int:
+        return 1 if self.get(key) is not None else 0
+
+    def incr(self, key: str) -> int:
+        now = time.time()
+        with self._thread:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    # атомарно: протухший ключ сбрасываем в 1
+                    cur.execute(
+                        f"""
+                        INSERT INTO `{self.table}` (`k`, `v`, `exp`)
+                        VALUES (%s, %s, NULL)
+                        ON DUPLICATE KEY UPDATE
+                          `v` = IF(
+                            `exp` IS NOT NULL AND `exp` <= %s,
+                            %s,
+                            CAST(`v` AS SIGNED) + 1
+                          ),
+                          `exp` = IF(
+                            `exp` IS NOT NULL AND `exp` <= %s,
+                            NULL,
+                            `exp`
+                          )
+                        """,
+                        (key, self._encode(1), now, self._encode(1), now),
+                    )
+                    cur.execute(
+                        f"SELECT `v` FROM `{self.table}` WHERE `k`=%s LIMIT 1",
+                        (key,),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return 1
+                    try:
+                        return int(self._decode(row[0]) or 0)
+                    except (TypeError, ValueError):
+                        return 1
+
+    def expire(self, key: str, ttl: int) -> bool:
+        exp = time.time() + max(1, int(ttl))
+        with self._thread:
+            with self._connect() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE `{self.table}` SET `exp`=%s WHERE `k`=%s",
+                        (exp, key),
+                    )
+                    return int(cur.rowcount or 0) > 0
+
+    def scan_iter(self, match: str = "*", count: int = 200) -> Iterator[str]:
+        like = match.replace("*", "%") if "*" in match else match
+        now = time.time()
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT `k` FROM `{self.table}`
+                    WHERE `k` LIKE %s
+                      AND (`exp` IS NULL OR `exp` > %s)
+                    LIMIT %s
+                    """,
+                    (like, now, max(1, int(count))),
+                )
+                rows = cur.fetchall() or []
+        for row in rows:
+            yield str(row[0])
+
+    def migrate_from_filestore(self, root: str) -> int:
+        """Переносит ключи из FileStore (JSON-файлы) в MySQL. Возвращает число ключей."""
+        if not root or not os.path.isdir(root):
+            return 0
+        moved = 0
+        try:
+            names = os.listdir(root)
+        except OSError:
+            return 0
+        for name in names:
+            if not name.endswith(".json") or name.startswith(".") or name.endswith(".lock"):
+                continue
+            path = os.path.join(root, name)
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    rec = json.load(fh)
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(rec, dict):
+                continue
+            key = rec.get("k")
+            if not key:
+                continue
+            exp = rec.get("exp")
+            if exp is not None:
+                try:
+                    exp_f = float(exp)
+                except (TypeError, ValueError):
+                    continue
+                if exp_f <= time.time():
+                    continue
+                ttl = max(1, int(exp_f - time.time()))
+            else:
+                ttl = 60 * 60 * 24 * 45
+            # не перезаписываем уже существующие ключи
+            if self.exists(str(key)):
+                continue
+            self.setex(str(key), ttl, rec.get("v"))
+            moved += 1
+        return moved

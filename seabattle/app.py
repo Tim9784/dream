@@ -14,7 +14,7 @@ from typing import Any
 from flask import Flask, g, jsonify, render_template, request
 
 from games import GAMES, get_game
-from memory_store import FileStore, MemoryStore
+from memory_store import FileStore, MemoryStore, MySQLStore
 from stats import snapshot as stats_snapshot
 from stats import track_finished, track_join, track_room_created, track_visit
 
@@ -48,8 +48,39 @@ app.config["MAX_CONTENT_LENGTH"] = MAX_JSON_BYTES
 app.config["JSON_AS_ASCII"] = False
 
 
+def _load_config() -> dict[str, Any]:
+    path = os.environ.get("PANEL_CONFIG") or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "config.json"
+    )
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+_CFG = _load_config()
+
+
 def _make_store():
-    """Redis если доступен, иначе файловое хранилище (CGI/shared без Redis)."""
+    """MySQL (config) → Redis → FileStore → MemoryStore."""
+    mysql_cfg = _CFG.get("mysql") if isinstance(_CFG.get("mysql"), dict) else {}
+    if mysql_cfg.get("host") and mysql_cfg.get("user") and mysql_cfg.get("database"):
+        try:
+            store = MySQLStore(
+                host=str(mysql_cfg["host"]),
+                user=str(mysql_cfg["user"]),
+                password=str(mysql_cfg.get("password") or ""),
+                database=str(mysql_cfg["database"]),
+                port=int(mysql_cfg.get("port") or 3306),
+                table=str(mysql_cfg.get("table") or "omove_kv"),
+            )
+            store.ping()
+            return store, Exception
+        except Exception:
+            pass
+
     try:
         import redis as _redis
 
@@ -60,7 +91,6 @@ def _make_store():
         pass
 
     # На CGI каждый запрос — новый процесс: MemoryStore теряет комнаты.
-    # Пишем на диск рядом с приложением / во временную папку хостинга.
     base = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base, "data", "store"),
@@ -82,20 +112,6 @@ def _make_store():
 
 rds, RedisError = _make_store()
 
-
-def _load_config() -> dict[str, Any]:
-    path = os.environ.get("PANEL_CONFIG") or os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "config.json"
-    )
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            data = json.load(fh)
-            return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-
-_CFG = _load_config()
 SITE_TITLE = str(_CFG.get("site_title") or "Omove.ru").strip() or "Omove.ru"
 # Скрытый путь статистики — не светим в UI обычным пользователям
 STATS_PATH = str(_CFG.get("stats_path") or "m-k7p2qx9w").strip().strip("/")
@@ -865,9 +881,9 @@ def leave_room(code: str):
 def health():
     try:
         rds.ping()
-        return jsonify({"ok": True})
+        return jsonify({"ok": True, "store": type(rds).__name__})
     except RedisError:
-        return jsonify({"ok": False}), 500
+        return jsonify({"ok": False, "store": type(rds).__name__}), 500
 
 
 if __name__ == "__main__":

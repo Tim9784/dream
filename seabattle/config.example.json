@@ -1,0 +1,14 @@
+{
+  "secret_key": "change-me",
+  "debug": false,
+  "mysql": {
+    "host": "u549672.mysql.masterhost.ru",
+    "port": 3306,
+    "user": "u549672",
+    "password": "YOUR_MYSQL_PASSWORD",
+    "database": "u549672",
+    "table": "omove_kv"
+  },
+  "telegram_bot_token": "",
+  "yandex_metrika_counter_id": "108210368"
+}
