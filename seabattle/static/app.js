@@ -816,32 +816,15 @@ function renderBoardGame(mount, s, kind){
     && String(board[picked.r][picked.c]).toUpperCase()==='K');
 
   let hint = 'Ты ходишь снизу вверх';
-  if(kind==='chess'){
-    if(castleOpts.length){
-      hint = 'Можно рокироваться — выбери вариант под доской';
-    } else {
-      hint = 'Ты ходишь снизу вверх · рокировка появится, когда путь короля свободен';
-    }
+  if(kind==='chess' && castleOpts.length){
+    hint = 'Ты ходишь снизу вверх · доступна рокировка';
   }
-
-  const castleIcon = (short) => short
-    ? `<svg class="castle-ico" viewBox="0 0 64 28" aria-hidden="true"><path d="M8 22V10h4v4h4V8h4v6h4V10h4v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><circle cx="48" cy="15" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M48 6.5V3.5M45 5h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M22 22h30" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".45"/><path d="M46 22l6-3.5 6 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`
-    : `<svg class="castle-ico" viewBox="0 0 64 28" aria-hidden="true"><circle cx="16" cy="15" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M16 6.5V3.5M13 5h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M36 22V10h4v4h4V8h4v6h4V10h4v12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 22h30" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".45"/><path d="M18 22l-6-3.5-6 3.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
 
   const castleBtns = castleOpts.length
     ? `<div class="castle-bar" role="group" aria-label="Рокировка">${castleOpts.map((o,i)=>{
         const short = !!o.short;
-        const sideTag = short ? 'O-O' : 'O-O-O';
-        const title = short ? 'Короткая' : 'Длинная';
-        const dest = short
-          ? (s.you==='p1' ? 'король → g1' : 'король → g8')
-          : (s.you==='p1' ? 'король → c1' : 'король → c8');
-        return `<button type="button" class="castle-card${short?' short':' long'}" data-castle="${i}">
-          <span class="castle-card-top"><span class="castle-tag">${sideTag}</span><span class="castle-arrow" aria-hidden="true">↗</span></span>
-          ${castleIcon(short)}
-          <span class="castle-card-title">${title} рокировка</span>
-          <span class="castle-card-sub">${dest}</span>
-        </button>`;
+        const label = short ? 'Рокировка O-O' : 'Рокировка O-O-O';
+        return `<button type="button" class="castle-quiet" data-castle="${i}">${label}</button>`;
       }).join('')}</div>`
     : '';
 
@@ -859,9 +842,9 @@ function renderBoardGame(mount, s, kind){
     sq.className='sq '+(dark?'dark':'light');
     if(picked && picked.r===sr && picked.c===sc) sq.classList.add('sel');
     const isCastleTarget = castleKey.has(sr+','+sc);
-    if(isCastleTarget && myTurn){
+    // подсветка клетки рокировки — только когда выбран король
+    if(isCastleTarget && myTurn && kingPick){
       sq.classList.add('castle-target');
-      if(kingPick) sq.classList.add('castle-pulse');
     }
     // координаты: a–h / 1–8 с учётом переворота доски
     const file = FILES[sc];
@@ -878,16 +861,11 @@ function renderBoardGame(mount, s, kind){
       fl.textContent = file;
       sq.appendChild(fl);
     }
-    if(isCastleTarget && myTurn){
-      const mark = document.createElement('span');
-      mark.className = 'castle-mark';
-      const opt = castleOpts.find(o => o.to_r===sr && o.to_c===sc);
-      mark.textContent = (opt && opt.short) ? 'O-O' : 'O-O-O';
-      sq.appendChild(mark);
-      const ring = document.createElement('span');
-      ring.className = 'castle-ring';
-      ring.setAttribute('aria-hidden','true');
-      sq.appendChild(ring);
+    if(isCastleTarget && myTurn && kingPick){
+      const dot = document.createElement('span');
+      dot.className = 'castle-dot';
+      dot.setAttribute('aria-hidden','true');
+      sq.appendChild(dot);
     }
     const cell = board[sr] ? board[sr][sc] : null;
     if(kind==='checkers'){
