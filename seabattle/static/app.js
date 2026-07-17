@@ -60,7 +60,14 @@ let hotseatSlot = null; // чей сейчас «экран» после под�
 let handoverFor = null;
 
 // seabattle placement
-let SB = {FLEET:PRESETS.medium.fleet.slice(), GRID:10, placed:[], selected:null, horizontal:true};
+let SB = {
+  FLEET: PRESETS.medium.fleet.slice(),
+  GRID: 10,
+  configKey: `10:${PRESETS.medium.fleet.join(',')}`,
+  placed: [],
+  selected: null,
+  horizontal: true,
+};
 
 // checkers/chess selection
 let picked = null; // {r,c}
@@ -396,6 +403,7 @@ function applyState(s, opts={}){
     setPlayStatus(s, who + (s.message || ''));
     setWinChance(s);
     renderGame(s);
+    if(!pollTimer) startPoll();
     // после рендера доски ещё раз — на случай гонки с poll
     setPlayStatus(s, who + (s.message || ''));
   } else if(s.phase==='done'){
@@ -470,12 +478,73 @@ function renderGame(s){
 }
 
 /* ===== Sea battle ===== */
+function sbFleetKey(fleet){
+  return (fleet||[]).map(n=>Number(n)).join(',');
+}
+
 function syncSB(gs){
-  const grid = gs.grid||10;
-  const fleet = (gs.fleet||PRESETS.medium.fleet).slice();
-  if(grid!==SB.GRID || fleet.join(',')!==SB.FLEET.join(',')){
-    SB.GRID=grid; SB.FLEET=fleet; SB.placed=[]; SB.selected=null;
+  const grid = Number(gs.grid) || 10;
+  const fleet = (gs.fleet||PRESETS.medium.fleet).map(n=>Number(n));
+  const nextKey = `${grid}:${sbFleetKey(fleet)}`;
+  if(nextKey !== SB.configKey){
+    SB.GRID = grid;
+    SB.FLEET = fleet.slice();
+    SB.configKey = nextKey;
+    SB.placed = [];
+    SB.selected = null;
   }
+}
+
+function normalizeSBShip(ship){
+  return {
+    size: Number(ship.size),
+    x: Number(ship.x),
+    y: Number(ship.y),
+    horizontal: ship.horizontal !== false,
+  };
+}
+
+function hydrateSBFromServer(gs, s){
+  const ships = gs.ships;
+  if(!Array.isArray(ships) || !ships.length) return;
+  const me = s && s.you;
+  const amReady = !!(me && gs.ready && gs.ready[me]);
+  if(!SB.placed.length || (amReady && ships.length === SB.FLEET.length)){
+    SB.placed = ships.map(normalizeSBShip);
+    SB.selected = null;
+  }
+}
+
+function isSBReadyLocked(){
+  const gs = state && state.game_state;
+  return !!(gs && state.you && gs.ready && gs.ready[state.you]);
+}
+
+function sbPlaceMountKey(ready){
+  return `${SB.configKey}:${ready?'ready':'active'}`;
+}
+
+function bindSBPlaceControls(){
+  $('sbRotate').onclick = ()=>{ if(isSBReadyLocked()) return; SB.horizontal = !SB.horizontal; };
+  $('sbClear').onclick = ()=>{ if(isSBReadyLocked()) return; SB.placed=[]; SB.selected=null; paintSBPlace(); };
+  $('sbRandom').onclick = ()=>{ if(isSBReadyLocked()) return; randomSB(); };
+  $('sbReady').onclick = ()=>{
+    if(isSBReadyLocked()) return;
+    if(SB.placed.length !== SB.FLEET.length) return;
+    doAction({type:'place', ships:SB.placed});
+  };
+}
+
+function updateSBPlaceReady(ready){
+  const readyBtn = $('sbReady');
+  if(readyBtn){
+    readyBtn.textContent = ready ? 'Ожидаем соперника…' : 'Готов к бою';
+    readyBtn.disabled = ready || SB.placed.length !== SB.FLEET.length;
+  }
+  ['sbClear','sbRandom','sbRotate'].forEach(id=>{
+    const el = $(id);
+    if(el) el.disabled = !!ready;
+  });
 }
 
 function cellsOf(ship){
@@ -501,9 +570,17 @@ function canPlace(ship){
 function renderSeabattle(mount, s){
   const gs = s.game_state||{};
   syncSB(gs);
+  hydrateSBFromServer(gs, s);
   const phase = gs.phase || (s.phase==='placing'?'placing':'battle');
   if(phase==='placing'){
-    const ready = gs.ready && s.you && gs.ready[s.you];
+    const ready = !!(gs.ready && s.you && gs.ready[s.you]);
+    const placeKey = sbPlaceMountKey(ready);
+    if(mount.dataset.sbPlaceKey === placeKey && $('sbPlace') && $('sbFleet')){
+      updateSBPlaceReady(ready);
+      paintSBPlace();
+      return;
+    }
+    mount.dataset.sbPlaceKey = placeKey;
     mount.innerHTML = `
       <div class="toolbar">
         <button class="btn ghost" id="sbRotate">Повернуть</button>
@@ -513,13 +590,12 @@ function renderSeabattle(mount, s){
       </div>
       <div class="fleet" id="sbFleet"></div>
       <div class="grid" id="sbPlace" style="grid-template-columns:repeat(${SB.GRID},1fr);max-width:460px;margin-top:12px"></div>`;
+    bindSBPlaceControls();
+    updateSBPlaceReady(ready);
     paintSBPlace();
-    $('sbRotate').onclick=()=>{ SB.horizontal=!SB.horizontal; };
-    $('sbClear').onclick=()=>{ if(ready) return; SB.placed=[]; SB.selected=null; paintSBPlace(); };
-    $('sbRandom').onclick=()=>{ if(ready) return; randomSB(); };
-    $('sbReady').onclick=()=>doAction({type:'place', ships:SB.placed});
     return;
   }
+  mount.dataset.sbPlaceKey = '';
   // battle
   const enemyLeft = gs.enemy_ships_left;
   const enemyLabel = enemyLeft==null
@@ -572,12 +648,14 @@ function paintSBPlace(){
       });
     };
     d.onmouseleave=()=>paintSBPlace();
-    d.onclick=()=>{
-      if(SB.selected==null) return;
+    const placeAt = ()=>{
+      if(isSBReadyLocked() || SB.selected==null) return;
       const ship={size:SB.selected,x,y,horizontal:SB.horizontal};
       if(!canPlace(ship)) return;
       SB.placed.push(ship); SB.selected=null; paintSBPlace();
     };
+    d.onclick=placeAt;
+    d.addEventListener('touchend', e=>{ e.preventDefault(); placeAt(); }, {passive:false});
     g.appendChild(d);
   }
   const fleet=$('sbFleet');
@@ -589,13 +667,14 @@ function paintSBPlace(){
     for(let n=0;n<(counts[size]||0);n++){
       const chip=document.createElement('div');
       chip.className='ship-chip'+(SB.selected===size?' active':'');
-      chip.onclick=()=>{ SB.selected=size; paintSBPlace(); };
+      const pickShip=()=>{ if(isSBReadyLocked()) return; SB.selected=size; paintSBPlace(); };
+      chip.onclick=pickShip;
+      chip.addEventListener('touchend', e=>{ e.preventDefault(); pickShip(); }, {passive:false});
       for(let i=0;i<size;i++){ const seg=document.createElement('div'); seg.className='seg'; chip.appendChild(seg); }
       fleet.appendChild(chip);
     }
   });
-  const readyBtn=$('sbReady');
-  if(readyBtn && !readyBtn.disabled) readyBtn.disabled = SB.placed.length!==SB.FLEET.length;
+  updateSBPlaceReady(isSBReadyLocked());
 }
 
 function randomSB(){

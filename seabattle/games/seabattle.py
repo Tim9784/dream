@@ -201,6 +201,8 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     if viewer and room["players"].get(viewer):
         out["board"] = st["boards"][viewer]
         out["enemy"] = st["shots"][viewer]
+        if room.get("phase") == "placing" or st.get("phase") == "placing":
+            out["ships"] = list(st["ships"].get(viewer) or [])
         opp = "p2" if viewer == "p1" else "p1"
         if room["players"].get(opp):
             out["incoming"] = st["shots"][opp]
