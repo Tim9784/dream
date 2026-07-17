@@ -1,6 +1,6 @@
 """Game engines for lobby multiplayer."""
 
-from . import backgammon, billiard, blik, checkers, chess, durak, hangman, seabattle, tictactoe
+from . import backgammon, blik, checkers, chess, durak, hangman, seabattle, tictactoe
 
 GAMES = {
     "seabattle": {
@@ -42,11 +42,6 @@ GAMES = {
         "title": "Виселица",
         "blurb": "Отгадай слово по буквам — соло",
         "module": hangman,
-    },
-    "billiard": {
-        "title": "Бильярд",
-        "blurb": "Пул на двоих — целься, сила, траектория",
-        "module": billiard,
     },
 }
 

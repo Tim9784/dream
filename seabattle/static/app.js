@@ -7,7 +7,6 @@ const GAME_ICONS = {
   durak: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3.5" width="12" height="17" rx="2.2"/><path d="M12 8.2c-.9-1.3-2.5-1.2-2.5.2 0 1.4 2.5 3.4 2.5 3.4s2.5-2 2.5-3.4c0-1.4-1.6-1.5-2.5-.2Z" fill="currentColor" stroke="none"/><path d="M9.2 17.8h5.6" stroke-linecap="round"/></svg>`,
   blik: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="10" height="14" rx="2" transform="rotate(-8 9 12)"/><rect x="10" y="5" width="10" height="14" rx="2" transform="rotate(10 15 12)"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>`,
   hangman: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20h10"/><path d="M7 20V5h8"/><path d="M15 5v3"/><circle cx="15" cy="10.2" r="1.6"/><path d="M15 11.8v3.4M13.4 17.4l1.6-2.2 1.6 2.2M13.6 13.4l-1.6 1.1M16.4 13.4l1.6 1.1"/></svg>`,
-  billiard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="8" cy="12" r="2.2" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10.5" r="1.7"/><circle cx="16.5" cy="14" r="1.5"/><path d="M8 12l7.5-4"/></svg>`,
 };
 
 const ANIMALS = [
@@ -32,7 +31,6 @@ const GAMES = {
   durak: {title:'Дурак', blurb:'Подкидной на 2–4 игрока, колода 36'},
   blik: {title:'OUNO', blurb:'Сбрось карты по цвету или знаку — 2–4 игрока'},
   hangman: {title:'Виселица', blurb:'Отгадай слово по буквам — соло'},
-  billiard: {title:'Бильярд', blurb:'Пул на двоих — целься, сила, траектория'},
 };
 
 const METRIKA_ID = 110798358;
@@ -45,7 +43,6 @@ const GAME_UTM = {
   durak:      {campaign:'durak',      content:'durak'},
   blik:       {campaign:'ouno',       content:'ouno'},
   hangman:    {campaign:'hangman',    content:'viselica'},
-  billiard:   {campaign:'billiard',   content:'bilyard'},
 };
 
 function trackGameUtm(gameId, action){
@@ -149,32 +146,12 @@ let SB = {
 let picked = null; // {r,c}
 let bgSel = {from:null, die:null};
 
-// billiard aim
-let BQ = {
-  angle: 0,
-  power: 0.55,
-  aiming: false,
-  animating: false,
-  lastShotId: -1,
-  mounted: false,
-  bound: false,
-};
 // не пересобирать UI на каждом poll, если состояние не изменилось
 let lastPlaySig = '';
 
 function playStateSig(s){
   if(!s) return '';
   const gs = s.game_state || {};
-  if(s.game === 'billiard'){
-    // shot_id + ход/статус — позиции шаров обновляет анимация/финальный кадр
-    return [
-      s.game, s.phase, s.turn, s.you, s.message,
-      gs.ball_in_hand ? 1 : 0,
-      gs.shot_id || 0,
-      JSON.stringify(gs.scores||{}),
-      JSON.stringify(gs.groups||{}),
-    ].join('|');
-  }
   return [s.game, s.phase, s.turn, s.you, s.message, s.winner, s.loser, JSON.stringify(gs)].join('|');
 }
 
@@ -510,23 +487,6 @@ function applyState(s, opts={}){
     setPlayStatus(s, who + (s.message || ''));
     setWinChance(s);
     if(!pollTimer) startPoll();
-    // во время анимации удара — только статус, DOM не трогаем
-    if(s.game==='billiard' && BQ.animating) return;
-    // новый удар — проиграть кадры один раз по shot_id
-    if(s.game==='billiard'){
-      const gs = s.game_state || {};
-      const shotId = Number(gs.shot_id || 0);
-      const frames = gs.frames || [];
-      if(shotId > 0 && shotId !== BQ.lastShotId && frames.length > 1){
-        BQ.lastShotId = shotId;
-        lastPlaySig = playStateSig(s);
-        playBilliardFrames(s, frames).then(()=>{
-          lastPlaySig = playStateSig(s);
-          renderBilliard($('gameMount'), s, {forceBalls:true});
-        });
-        return;
-      }
-    }
     const sig = playStateSig(s);
     if(sig === lastPlaySig) return;
     lastPlaySig = sig;
@@ -587,11 +547,6 @@ async function doAction(payload){
       method:'POST',
       body:JSON.stringify({token, ...payload})
     });
-    const gs = data.state && data.state.game_state;
-    if(data.state && data.state.game==='billiard' && gs && gs.frames && gs.frames.length > 1){
-      BQ.lastShotId = Number(gs.shot_id || BQ.lastShotId);
-      await playBilliardFrames(data.state, gs.frames);
-    }
     applyState(data.state);
   }catch(e){ $('playErr').textContent=e.message; }
 }
@@ -606,341 +561,6 @@ function renderGame(s){
   if(s.game==='durak') return renderDurak(mount, s);
   if(s.game==='blik') return renderBlik(mount, s);
   if(s.game==='hangman') return renderHangman(mount, s);
-  if(s.game==='billiard') return renderBilliard(mount, s);
-}
-
-/* ===== Billiard ===== */
-function playBilliardFrames(s, frames){
-  return new Promise(resolve=>{
-    const mount = $('gameMount');
-    if(!mount){ resolve(); return; }
-    if(BQ.animating){ resolve(); return; }
-    if(!mount.querySelector('#bqCanvas')){
-      renderBilliard(mount, s, {forceMount:true});
-    }
-    BQ.animating = true;
-    BQ.aiming = false;
-    const list = frames.slice();
-    let i = 0;
-    let last = performance.now();
-    const frameMs = 1000 / 40;
-    const tick = (now)=>{
-      if(!BQ.animating){ resolve(); return; }
-      if(now - last >= frameMs){
-        last = now;
-        if(i >= list.length){
-          BQ.animating = false;
-          drawBilliardFrame(mount, s, null, null);
-          resolve();
-          return;
-        }
-        drawBilliardFrame(mount, s, list[i], null);
-        i += 1;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-}
-
-function billiardCue(gs){
-  return (gs.balls||[]).find(b=>b.cue) || null;
-}
-
-function billiardAimLine(gs, angle, power){
-  const cue = billiardCue(gs);
-  if(!cue || cue.pocketed || cue.x==null) return null;
-  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.0285;
-  const mouth = 0.068, sideMouth = 0.074;
-  const nearGapX = (x)=>{
-    if(x <= mouth || x >= tw - mouth) return true;
-    return Math.abs(x - tw/2) <= sideMouth;
-  };
-  const nearGapY = (y)=> y <= mouth || y >= th - mouth;
-  let x = cue.x, y = cue.y;
-  let dx = Math.cos(angle), dy = Math.sin(angle);
-  const pts = [[x,y]];
-  const others = (gs.balls||[]).filter(b=>!b.pocketed && !b.cue && b.x!=null);
-  const step = r * 0.28;
-  for(let i=0; i<260; i++){
-    x += dx * step; y += dy * step;
-    if(x < r && !nearGapY(y)){ x=r; dx=Math.abs(dx); pts.push([x,y]); }
-    else if(x > tw-r && !nearGapY(y)){ x=tw-r; dx=-Math.abs(dx); pts.push([x,y]); }
-    if(y < r && !nearGapX(x)){ y=r; dy=Math.abs(dy); pts.push([x,y]); }
-    else if(y > th-r && !nearGapX(x)){ y=th-r; dy=-Math.abs(dy); pts.push([x,y]); }
-    for(const b of others){
-      const d = Math.hypot(x-b.x, y-b.y);
-      if(d <= r*2){
-        pts.push([x,y]);
-        const nx=(b.x-x)/(d||1), ny=(b.y-y)/(d||1);
-        pts.push([b.x + nx*r*3.5, b.y + ny*r*3.5]);
-        return {pts, hit:b, power};
-      }
-    }
-    if(i%4===0) pts.push([x,y]);
-  }
-  pts.push([x,y]);
-  return {pts, hit:null, power};
-}
-
-function drawBilliardFrame(mount, s, frameOrNull, aim){
-  const canvas = mount.querySelector('#bqCanvas');
-  if(!canvas) return;
-  const gs = s.game_state||{};
-  const tw = (gs.table&&gs.table.w)||2, th=(gs.table&&gs.table.h)||1, r=(gs.table&&gs.table.r)||0.0285;
-  const ctx = canvas.getContext('2d');
-  const W = canvas.width, H = canvas.height;
-  const pad = 18;
-  const scale = Math.min((W-pad*2)/tw, (H-pad*2)/th);
-  const ox = (W - tw*scale)/2, oy = (H - th*scale)/2;
-  const toX = x => ox + x*scale;
-  const toY = y => oy + y*scale;
-
-  const g = ctx.createLinearGradient(0,0,W,H);
-  g.addColorStop(0,'#14532d'); g.addColorStop(0.5,'#166534'); g.addColorStop(1,'#14532d');
-  ctx.fillStyle = '#1c1917';
-  ctx.fillRect(0,0,W,H);
-  roundRect(ctx, ox-14, oy-14, tw*scale+28, th*scale+28, 16);
-  ctx.fillStyle = '#2a1a10'; ctx.fill();
-  roundRect(ctx, ox-8, oy-8, tw*scale+16, th*scale+16, 12);
-  ctx.fillStyle = '#5c3d24'; ctx.fill();
-  roundRect(ctx, ox-3, oy-3, tw*scale+6, th*scale+6, 9);
-  ctx.fillStyle = '#3f2a1a'; ctx.fill();
-  roundRect(ctx, ox, oy, tw*scale, th*scale, 6);
-  ctx.fillStyle = g; ctx.fill();
-  ctx.save();
-  ctx.beginPath();
-  roundRect(ctx, ox, oy, tw*scale, th*scale, 6);
-  ctx.clip();
-  ctx.strokeStyle = 'rgba(255,255,255,.035)';
-  ctx.lineWidth = 1;
-  for(let gx=ox; gx<ox+tw*scale; gx+=18){
-    ctx.beginPath(); ctx.moveTo(gx, oy); ctx.lineTo(gx, oy+th*scale); ctx.stroke();
-  }
-  for(let gy=oy; gy<oy+th*scale; gy+=18){
-    ctx.beginPath(); ctx.moveTo(ox, gy); ctx.lineTo(ox+tw*scale, gy); ctx.stroke();
-  }
-  ctx.restore();
-  (gs.pockets||[]).forEach(p=>{
-    ctx.beginPath();
-    ctx.arc(toX(p.x), toY(p.y), Math.max(10, r*scale*1.75), 0, Math.PI*2);
-    ctx.fillStyle = '#050505';
-    ctx.fill();
-  });
-
-  const balls = gs.balls||[];
-  const drawBall = (b, x, y)=>{
-    if(x==null || y==null) return;
-    const cx=toX(x), cy=toY(y), br=r*scale;
-    const grd = ctx.createRadialGradient(cx-br*0.35, cy-br*0.4, br*0.1, cx, cy, br);
-    grd.addColorStop(0, '#fff');
-    grd.addColorStop(0.18, b.color||'#ccc');
-    grd.addColorStop(1, shade(b.color||'#999', -40));
-    ctx.beginPath(); ctx.arc(cx,cy,br,0,Math.PI*2); ctx.fillStyle=grd; ctx.fill();
-    if(b.stripe){
-      ctx.save();
-      ctx.beginPath(); ctx.arc(cx,cy,br,0,Math.PI*2); ctx.clip();
-      ctx.fillStyle='rgba(255,255,255,.88)';
-      ctx.fillRect(cx-br, cy-br*0.35, br*2, br*0.7);
-      ctx.restore();
-    }
-    if(b.id>0){
-      ctx.fillStyle = b.eight ? '#fafafa' : '#111';
-      ctx.font = `700 ${Math.max(9, br*0.85)}px Outfit,sans-serif`;
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(String(b.id), cx, cy+0.5);
-    }
-  };
-
-  if(frameOrNull){
-    frameOrNull.forEach((pos, idx)=>{
-      const b = balls[idx] || {id:idx, color:'#aaa'};
-      if(pos[2]) return;
-      drawBall(b, pos[0], pos[1]);
-    });
-  } else {
-    balls.forEach(b=> drawBall(b, b.x, b.y));
-  }
-
-  if(aim && aim.pts && aim.pts.length>1){
-    ctx.beginPath();
-    ctx.moveTo(toX(aim.pts[0][0]), toY(aim.pts[0][1]));
-    for(let i=1;i<aim.pts.length;i++) ctx.lineTo(toX(aim.pts[i][0]), toY(aim.pts[i][1]));
-    ctx.strokeStyle = 'rgba(250,250,250,.55)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6,6]);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    const last = aim.pts[aim.pts.length-1];
-    ctx.beginPath();
-    ctx.arc(toX(last[0]), toY(last[1]), 4, 0, Math.PI*2);
-    ctx.fillStyle='rgba(250,250,250,.7)';
-    ctx.fill();
-  }
-}
-
-function shade(hex, amt){
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex||'');
-  if(!m) return hex;
-  const n = v => Math.max(0, Math.min(255, parseInt(v,16)+amt));
-  return '#'+[n(m[1]),n(m[2]),n(m[3])].map(v=>v.toString(16).padStart(2,'0')).join('');
-}
-function roundRect(ctx,x,y,w,h,r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
-}
-
-function renderBilliard(mount, s, opts){
-  opts = opts || {};
-  if(BQ.animating && !opts.forceMount) return;
-  if(!mount) return;
-  BQ.view = s;
-  const gs = s.game_state||{};
-  const myTurn = s.turn===s.you && s.phase==='playing';
-  const groupLabel = g => g==='solid'?'сплошные':(g==='stripe'?'полосатые':'—');
-  const hand = !!(gs.ball_in_hand && myTurn);
-
-  const metaHtml = `
-      <div><span class="bq-k">Ты</span> ${escapeHtml(s.your_name||'')} · ${groupLabel(gs.groups&&gs.groups[s.you])}</div>
-      <div><span class="bq-k">Счёт</span> ${gs.scores&&gs.scores.p1||0} : ${gs.scores&&gs.scores.p2||0}</div>`;
-  const hintText = hand
-    ? 'Биток в руке — кликни по столу, куда поставить'
-    : (myTurn ? 'Тяни от битка мышью/пальцем, чтобы нацелить. Отпусти или жми «Удар».' : 'Ход соперника');
-
-  const ensureBound = (canvas)=>{
-    if(BQ.bound && mount.dataset.bqBound === '1') return;
-    BQ.bound = true;
-    mount.dataset.bqBound = '1';
-
-    const redraw = ()=>{
-      const cur = BQ.view || s;
-      const cgs = cur.game_state||{};
-      const turn = cur.turn===cur.you && cur.phase==='playing';
-      const inHand = !!(cgs.ball_in_hand && turn);
-      const aim = (turn && !inHand && !BQ.animating) ? billiardAimLine(cgs, BQ.angle, BQ.power) : null;
-      drawBilliardFrame(mount, cur, null, aim);
-    };
-
-    const power = ()=>$('bqPower');
-    const powerVal = ()=>$('bqPowerVal');
-    const onPower = ()=>{
-      const el = power();
-      if(!el) return;
-      BQ.power = Math.max(0.08, Math.min(1, Number(el.value)/100));
-      const pv = powerVal();
-      if(pv) pv.textContent = Math.round(BQ.power*100)+'%';
-      redraw();
-    };
-    if(power()) power().oninput = onPower;
-
-    const toTable = (evt)=>{
-      const cur = BQ.view || s;
-      const cgs = cur.game_state||{};
-      const rect = canvas.getBoundingClientRect();
-      const tw=(cgs.table&&cgs.table.w)||2, th=(cgs.table&&cgs.table.h)||1;
-      const pad=18;
-      const scale = Math.min((canvas.width-pad*2)/tw, (canvas.height-pad*2)/th);
-      const ox=(canvas.width-tw*scale)/2, oy=(canvas.height-th*scale)/2;
-      const cx = (evt.clientX - rect.left) * (canvas.width/rect.width);
-      const cy = (evt.clientY - rect.top) * (canvas.height/rect.height);
-      return {x:(cx-ox)/scale, y:(cy-oy)/scale};
-    };
-
-    const onPointer = (evt)=>{
-      const cur = BQ.view || s;
-      const cgs = cur.game_state||{};
-      const turn = cur.turn===cur.you && cur.phase==='playing';
-      const inHand = !!(cgs.ball_in_hand && turn);
-      if(!turn || inHand || BQ.animating) return;
-      const cue = billiardCue(cgs);
-      if(!cue || cue.x==null) return;
-      const p = toTable(evt);
-      const dx = cue.x - p.x, dy = cue.y - p.y;
-      const dist = Math.hypot(dx, dy);
-      if(dist > 0.001){
-        BQ.angle = Math.atan2(dy, dx);
-        BQ.power = Math.max(0.08, Math.min(1, dist / 0.42));
-        const el = power();
-        if(el) el.value = String(Math.round(BQ.power*100));
-        const pv = powerVal();
-        if(pv) pv.textContent = Math.round(BQ.power*100)+'%';
-      }
-      redraw();
-    };
-
-    canvas.onpointerdown = (e)=>{
-      const cur = BQ.view || s;
-      const cgs = cur.game_state||{};
-      const turn = cur.turn===cur.you && cur.phase==='playing';
-      const inHand = !!(cgs.ball_in_hand && turn);
-      if(inHand && turn){
-        const p = toTable(e);
-        doAction({type:'place_cue', x:p.x, y:p.y});
-        return;
-      }
-      if(!turn || inHand || BQ.animating) return;
-      BQ.aiming = true;
-      try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
-      onPointer(e);
-    };
-    canvas.onpointermove = (e)=>{ if(BQ.aiming) onPointer(e); };
-    canvas.onpointerup = (e)=>{ BQ.aiming=false; try{canvas.releasePointerCapture(e.pointerId)}catch(_){} };
-    canvas.onpointercancel = ()=>{ BQ.aiming=false; };
-
-    const shootBtn = $('bqShoot');
-    if(shootBtn) shootBtn.onclick = ()=>{
-      const cur = BQ.view || s;
-      const cgs = cur.game_state||{};
-      const turn = cur.turn===cur.you && cur.phase==='playing';
-      const inHand = !!(cgs.ball_in_hand && turn);
-      if(!turn || inHand || BQ.animating) return;
-      doAction({type:'shot', angle:BQ.angle, power:BQ.power});
-    };
-    BQ.redraw = redraw;
-  };
-
-  const existing = mount.querySelector('#bqCanvas');
-  if(existing && BQ.mounted && !opts.forceMount){
-    const meta = mount.querySelector('.bq-meta');
-    if(meta) meta.innerHTML = metaHtml;
-    const hint = mount.querySelector('.bq-hint');
-    if(hint) hint.textContent = hintText;
-    const controls = mount.querySelector('.bq-controls');
-    if(controls) controls.classList.toggle('dim', !(myTurn && !hand));
-    const shoot = $('bqShoot');
-    if(shoot) shoot.disabled = !(myTurn && !hand);
-    const el = $('bqPower');
-    if(el && !BQ.aiming) el.value = String(Math.round(BQ.power*100));
-    const pv = $('bqPowerVal');
-    if(pv && !BQ.aiming) pv.textContent = Math.round(BQ.power*100)+'%';
-    ensureBound(existing);
-    if(opts.forceBalls || !BQ.aiming){
-      const aim = (myTurn && !hand) ? billiardAimLine(gs, BQ.angle, BQ.power) : null;
-      drawBilliardFrame(mount, s, null, aim);
-    }
-    return;
-  }
-
-  BQ.mounted = true;
-  BQ.bound = false;
-  mount.dataset.bqBound = '0';
-  mount.innerHTML = `
-    <div class="bq-wrap">
-      <div class="bq-meta">${metaHtml}</div>
-      <canvas id="bqCanvas" class="bq-canvas" width="720" height="380"></canvas>
-      <div class="bq-controls ${myTurn&&!hand?'':'dim'}">
-        <label class="bq-power"><span>Сила</span>
-          <input id="bqPower" type="range" min="8" max="100" value="${Math.round(BQ.power*100)}">
-          <em id="bqPowerVal">${Math.round(BQ.power*100)}%</em>
-        </label>
-        <button type="button" class="btn" id="bqShoot" ${myTurn&&!hand?'':'disabled'}>Удар</button>
-      </div>
-      <p class="hint bq-hint">${hintText}</p>
-    </div>`;
-  ensureBound($('bqCanvas'));
-  const aim = (myTurn && !hand) ? billiardAimLine(gs, BQ.angle, BQ.power) : null;
-  drawBilliardFrame(mount, s, null, aim);
 }
 
 /* ===== Sea battle ===== */
@@ -1944,8 +1564,6 @@ function goHome(msg){
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   lastPlaySig = '';
   lastFinishedSig = '';
-  BQ.animating = false; BQ.aiming = false; BQ.lastShotId = -1;
-  BQ.mounted = false; BQ.bound = false; BQ.view = null; BQ.redraw = null;
   SB.placed=[]; SB.selected=null;
   blikUi = { colorPick: null };
   setLocalNamesVisible(false);
@@ -1994,8 +1612,7 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
     });
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     lastPlaySig = '';
-    BQ.animating = false; BQ.aiming = false; BQ.lastShotId = -1;
-    BQ.mounted = false; BQ.bound = false; BQ.view = null;
+    lastFinishedSig = '';
     clearShareHint(true);
     const mode = vsLocalMode ? 'local' : (vsAi ? 'ai' : 'pvp');
     trackGameUtm(chosenGame, mode);
