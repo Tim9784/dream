@@ -35,6 +35,56 @@ const GAMES = {
   billiard: {title:'Бильярд', blurb:'Пул на двоих — целься, сила, траектория'},
 };
 
+const METRIKA_ID = 110798358;
+const GAME_UTM = {
+  seabattle:  {campaign:'seabattle',  content:'morskoy-boy'},
+  tictactoe:  {campaign:'tictactoe',  content:'krestiki-noliki'},
+  checkers:   {campaign:'checkers',   content:'shashki'},
+  chess:      {campaign:'chess',      content:'shahmaty'},
+  backgammon: {campaign:'backgammon', content:'nardy'},
+  durak:      {campaign:'durak',      content:'durak'},
+  blik:       {campaign:'ouno',       content:'ouno'},
+  hangman:    {campaign:'hangman',    content:'viselica'},
+  billiard:   {campaign:'billiard',   content:'bilyard'},
+};
+
+function trackGameUtm(gameId, action){
+  const id = String(gameId || '').toLowerCase();
+  const meta = GAME_UTM[id];
+  if(!meta) return;
+  const act = String(action || 'select');
+  try{
+    const u = new URL(location.href);
+    u.searchParams.set('utm_source', 'omove');
+    u.searchParams.set('utm_medium', 'game');
+    u.searchParams.set('utm_campaign', meta.campaign);
+    u.searchParams.set('utm_content', meta.content);
+    u.searchParams.set('utm_term', act);
+    const next = u.pathname + u.search + u.hash;
+    if(next !== location.pathname + location.search + location.hash){
+      history.replaceState(history.state || {}, '', next);
+    }
+  }catch(_){}
+
+  try{
+    if(typeof ym === 'function'){
+      ym(METRIKA_ID, 'params', {
+        game: id,
+        game_title: (GAMES[id] && GAMES[id].title) || id,
+        game_action: act,
+        utm_campaign: meta.campaign,
+      });
+      ym(METRIKA_ID, 'reachGoal', 'game_' + meta.campaign, {action: act});
+      ym(METRIKA_ID, 'reachGoal', 'game_' + meta.campaign + '_' + act);
+      // виртуальный просмотр с UTM в URL — Метрика подхватит метки
+      ym(METRIKA_ID, 'hit', location.pathname + location.search, {
+        title: ((GAMES[id] && GAMES[id].title) || id) + ' — Omove.ru',
+        referer: document.referrer || undefined,
+      });
+    }
+  }catch(_){}
+}
+
 const PRESETS = {
   small:{grid:8,fleet:[3,2,2,1,1,1]},
   medium:{grid:10,fleet:[4,3,3,2,2,2,1,1,1,1]},
@@ -134,6 +184,7 @@ function openSetup(gameId){
   $('setupErr').textContent = '';
   setLocalNamesVisible(false);
   show('setup');
+  trackGameUtm(chosenGame, 'select');
 }
 
 function renderGameCards(){
@@ -1920,6 +1971,8 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
     BQ.animating = false; BQ.aiming = false; BQ.lastShotId = -1;
     BQ.mounted = false; BQ.bound = false; BQ.view = null;
     clearShareHint(true);
+    const mode = vsLocalMode ? 'local' : (vsAi ? 'ai' : 'pvp');
+    trackGameUtm(chosenGame, mode);
     applyState(data.state); startPoll();
   }catch(e){ if(errEl) errEl.textContent=e.message; }
 }
@@ -1936,6 +1989,7 @@ async function joinRoomByCode(roomCode, joinName){
   chosenGame = (data.state && data.state.game) || chosenGame;
   lastSettings = {game:chosenGame, vsAi:false, vsLocal:false, name:joinName, name2:randomAnimal(joinName), size:chosenBoard};
   LS.set({token,code,name:joinName, game:chosenGame});
+  trackGameUtm(chosenGame, data.reconnected ? 'reconnect' : 'join');
   if(!data.reconnected){
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   }
@@ -2123,6 +2177,7 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
     if(saved.name2 && $('name2')) $('name2').value=saved.name2;
     try{
       const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+      if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
       applyState(data.state); startPoll();
     }catch{ LS.clear(); }
     return;
@@ -2132,6 +2187,7 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   if(saved.name && $('name')) $('name').value=saved.name;
   try{
     const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+    if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
     applyState(data.state); startPoll();
   }catch(e){
     // комната могла кратко не прочитаться — пробуем явный rejoin по токену
