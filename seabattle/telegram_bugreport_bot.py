@@ -45,15 +45,19 @@ def _api(token: str, method: str, payload: dict[str, Any] | None = None, timeout
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            out = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Telegram HTTP {exc.code}: {body}") from exc
-    if not out.get("ok"):
-        raise RuntimeError(f"Telegram error: {out}")
-    return out
+    # На части VPS Telegram по IPv6/некоторым IP недоступен — пробуем несколько раз.
+    last_err: Exception | None = None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                out = json.loads(resp.read().decode("utf-8"))
+            if not out.get("ok"):
+                raise RuntimeError(f"Telegram error: {out}")
+            return out
+        except Exception as exc:  # noqa: BLE001 — ретраи сети
+            last_err = exc
+            time.sleep(0.4 * (attempt + 1))
+    raise RuntimeError(f"Telegram request failed: {last_err}")
 
 
 def _read_json(path: Path, default: Any) -> Any:
