@@ -365,10 +365,37 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
 
 def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     st = room["state"]
-    return {
+    castling = st.get("castling") or {"p1": {"K": True, "Q": True}, "p2": {"K": True, "Q": True}}
+    out: dict[str, Any] = {
         "board": st["board"],
-        "castling": st.get("castling") or {"p1": {"K": True, "Q": True}, "p2": {"K": True, "Q": True}},
+        "castling": castling,
+        "castle_options": [],
     }
+    if (
+        viewer
+        and room.get("phase") == "playing"
+        and room.get("turn") == viewer
+        and room["players"].get(viewer)
+    ):
+        white = viewer == "p1"
+        row = 7 if white else 0
+        king_c = 4
+        rights = castling.get(viewer) or {}
+        for tr, tc, side in _castling_targets(st["board"], white, rights):
+            if (tr, tc) not in _legal_moves(st["board"], row, king_c, castling):
+                continue
+            short = side == "K"
+            out["castle_options"].append({
+                "side": side,
+                "from_r": row,
+                "from_c": king_c,
+                "to_r": tr,
+                "to_c": tc,
+                "short": short,
+                "label": "Короткая рокировка" if short else "Длинная рокировка",
+                "sub": "король на 2 клетки к краю h" if short else "король на 2 клетки к краю a",
+            })
+    return out
 
 
 def win_chance(room: dict[str, Any], slot: str) -> int:

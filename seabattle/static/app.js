@@ -808,7 +808,34 @@ function renderBoardGame(mount, s, kind){
   const myTurn = s.turn===s.you && s.phase==='playing';
   const flip = flipNeeded(s);
   const FILES = 'abcdefgh';
-  mount.innerHTML = `<div class="hint" style="margin-bottom:6px">Ты ходишь снизу вверх</div><div class="board-frame"><div class="sq-board" id="sqBoard"></div></div>`;
+  const castleOpts = (kind==='chess' && Array.isArray(s.game_state&&s.game_state.castle_options))
+    ? s.game_state.castle_options
+    : [];
+  const castleKey = new Set(castleOpts.map(o => o.to_r+','+o.to_c));
+  const kingPick = !!(picked && kind==='chess' && board[picked.r] && board[picked.r][picked.c]
+    && String(board[picked.r][picked.c]).toUpperCase()==='K');
+
+  let hint = 'Ты ходишь снизу вверх';
+  if(kind==='chess'){
+    if(castleOpts.length){
+      hint = 'Рокировка доступна — нажми кнопку под доской или кликни короля, потом клетку с подписью «рокировка»';
+    } else {
+      hint = 'Рокировка: освободи путь между королём и ладьёй, затем кнопка появится сама';
+    }
+  }
+
+  const castleBtns = castleOpts.length
+    ? `<div class="castle-bar">${castleOpts.map((o,i)=>`
+        <button type="button" class="btn castle-btn" data-castle="${i}">
+          <strong>${o.label}</strong>
+          <small>${o.sub||''}</small>
+        </button>`).join('')}</div>`
+    : '';
+
+  mount.innerHTML = `
+    <div class="hint" style="margin-bottom:6px">${hint}</div>
+    <div class="board-frame"><div class="sq-board" id="sqBoard"></div></div>
+    ${castleBtns}`;
   const box=$('sqBoard');
   // draw display rows top->bottom
   for(let dr=0; dr<8; dr++) for(let dc=0; dc<8; dc++){
@@ -818,6 +845,8 @@ function renderBoardGame(mount, s, kind){
     const dark=(sr+sc)%2===1;
     sq.className='sq '+(dark?'dark':'light');
     if(picked && picked.r===sr && picked.c===sc) sq.classList.add('sel');
+    const isCastleTarget = castleKey.has(sr+','+sc);
+    if(isCastleTarget && (kingPick || myTurn)) sq.classList.add('castle-target');
     // координаты: a–h / 1–8 с учётом переворота доски
     const file = FILES[sc];
     const rank = String(8 - sr);
@@ -832,6 +861,12 @@ function renderBoardGame(mount, s, kind){
       fl.className = 'coord file'+(dark?' on-dark':' on-light');
       fl.textContent = file;
       sq.appendChild(fl);
+    }
+    if(isCastleTarget && myTurn){
+      const mark = document.createElement('span');
+      mark.className = 'castle-mark';
+      mark.textContent = 'рокировка';
+      sq.appendChild(mark);
     }
     const cell = board[sr] ? board[sr][sc] : null;
     if(kind==='checkers'){
@@ -858,6 +893,19 @@ function renderBoardGame(mount, s, kind){
     };
     box.appendChild(sq);
   }
+
+  mount.querySelectorAll('[data-castle]').forEach(btn=>{
+    btn.onclick = ()=>{
+      if(!myTurn) return;
+      const opt = castleOpts[Number(btn.getAttribute('data-castle'))];
+      if(!opt) return;
+      picked = null;
+      doAction({
+        from_r: opt.from_r, from_c: opt.from_c,
+        to_r: opt.to_r, to_c: opt.to_c
+      });
+    };
+  });
 }
 
 /* ===== Backgammon ===== */
