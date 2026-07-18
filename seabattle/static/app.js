@@ -237,6 +237,16 @@ async function api(path, opts={}){
 
 let currentUser = null;
 
+function applyAccountNameToForm(){
+  if(!currentUser || !currentUser.name) return;
+  if($('name')){
+    $('name').value = currentUser.name;
+    $('name').dataset.fromUser = '1';
+  }
+  if($('authName')) $('authName').value = currentUser.name;
+  lastSettings.name = currentUser.name;
+}
+
 function renderAccount(){
   const box = $('accountBox');
   if(!box) return;
@@ -250,15 +260,12 @@ function renderAccount(){
     `;
     const btn = $('btnLogout');
     if(btn) btn.onclick = logoutUser;
-    if($('name') && (!$('name').value || $('name').dataset.fromUser === '1')){
-      $('name').value = currentUser.name || '';
-      $('name').dataset.fromUser = '1';
-    }
-    if($('authName')) $('authName').value = currentUser.name || '';
+    applyAccountNameToForm();
   }else{
     box.innerHTML = `<button type="button" class="theme-btn" id="btnLogin" style="margin-top:0">Войти</button>`;
     const btn = $('btnLogin');
     if(btn) btn.onclick = openAuthModal;
+    if($('name')) delete $('name').dataset.fromUser;
   }
 }
 
@@ -475,18 +482,33 @@ function startPoll(){
 }
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
-function playerName(el){ return (el.value.trim() || randomAnimal()); }
+function playerName(el){
+  const v = (el && el.value || '').trim();
+  if(v) return v;
+  if(currentUser && currentUser.name) return String(currentUser.name).slice(0, 20);
+  return randomAnimal();
+}
 
-(function fillDefaultNames(){
+function fillDefaultNames(){
+  // если уже вошли — всегда имя из аккаунта, не случайное
+  if(currentUser && currentUser.name){
+    applyAccountNameToForm();
+    const n2 = $('name2');
+    if(n2 && (!n2.value.trim() || /^Игрок\s*\d*$/i.test(n2.value.trim()))){
+      n2.value = randomAnimal(currentUser.name);
+    }
+    return;
+  }
   const n1 = $('name');
   const n2 = $('name2');
+  if(n1 && n1.dataset.fromUser === '1') return;
   if(n1 && (!n1.value.trim() || /^Игрок\s*\d*$/i.test(n1.value.trim()))){
     n1.value = randomAnimal();
   }
   if(n2 && (!n2.value.trim() || /^Игрок\s*\d*$/i.test(n2.value.trim()))){
     n2.value = randomAnimal(n1 && n1.value.trim());
   }
-})();
+}
 
 function needsPrivacy(game){
   // экран «я за экраном» — морской бой и карты (скрытая рука)
