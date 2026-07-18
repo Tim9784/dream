@@ -148,11 +148,18 @@ let bgSel = {from:null, die:null};
 
 // не пересобирать UI на каждом poll, если состояние не изменилось
 let lastPlaySig = '';
+let stateRev = 0;
 
 function playStateSig(s){
   if(!s) return '';
   const gs = s.game_state || {};
   return [s.game, s.phase, s.turn, s.you, s.message, s.winner, s.loser, JSON.stringify(gs)].join('|');
+}
+
+function boardFilledCount(s){
+  const board = s && s.game_state && s.game_state.board;
+  if(!Array.isArray(board)) return 0;
+  return board.reduce((n,v)=>n+(v?1:0), 0);
 }
 
 function currentTheme(){ return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'; }
@@ -619,6 +626,14 @@ function setWinChance(s){
 }
 
 function applyState(s, opts={}){
+  if(!s) return;
+  const rev = Number(s.rev) || 0;
+  // устаревший poll не должен откатывать доску после хода
+  if(!opts.force && rev && stateRev && rev < stateRev) return;
+  if(!opts.force && state && s.game==='tictactoe' && boardFilledCount(s) < boardFilledCount(state) && (s.phase==='playing'||s.phase==='placing')){
+    return;
+  }
+  if(rev) stateRev = rev;
   state = s;
   lastSettings.game = s.game || lastSettings.game;
   lastSettings.vsAi = !!s.vs_ai;
@@ -1002,14 +1017,27 @@ function drawSBGrid(el, matrix, clickable, enabled){
 function renderTTT(mount, s){
   const board = (s.game_state&&s.game_state.board)||Array(9).fill(0);
   const myTurn = s.turn===s.you && s.phase==='playing';
-  mount.innerHTML = `<div class="ttt" id="ttt"></div>`;
-  const box=$('ttt');
+  // не трогаем innerHTML целиком — иначе после хода доска на миг «пустеет»
+  let box = mount.querySelector('#ttt');
+  if(!box || mount.dataset.gameUi !== 'tictactoe'){
+    mount.dataset.gameUi = 'tictactoe';
+    mount.innerHTML = `<div class="ttt" id="ttt"></div>`;
+    box = mount.querySelector('#ttt');
+    for(let i=0;i<9;i++){
+      const b=document.createElement('button');
+      b.type = 'button';
+      b.dataset.cell = String(i);
+      b.onclick = ()=>doAction({cell:i});
+      box.appendChild(b);
+    }
+  }
+  const buttons = box.querySelectorAll('button');
   board.forEach((v,i)=>{
-    const b=document.createElement('button');
-    b.textContent = v===1?'X':(v===2?'O':'');
+    const b = buttons[i];
+    if(!b) return;
+    const mark = v===1?'X':(v===2?'O':'');
+    if(b.textContent !== mark) b.textContent = mark;
     b.disabled = !myTurn || !!v;
-    b.onclick=()=>doAction({cell:i});
-    box.appendChild(b);
   });
 }
 
@@ -1767,6 +1795,7 @@ function goHome(msg){
   token=null; code=null; state=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
   tokens={p1:null,p2:null}; vsLocal=false; hotseatSlot=null; handoverFor=null;
   lastPlaySig = '';
+  stateRev = 0;
   lastFinishedSig = '';
   SB.placed=[]; SB.selected=null;
   blikUi = { colorPick: null };
@@ -2025,7 +2054,8 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
     try{
       const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
       if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
-      applyState(data.state); startPoll();
+      stateRev = 0;
+      applyState(data.state, {force:true}); startPoll();
     }catch{ LS.clear(); }
     return;
   }
@@ -2035,7 +2065,8 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   try{
     const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
     if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
-    applyState(data.state); startPoll();
+    stateRev = 0;
+    applyState(data.state, {force:true}); startPoll();
   }catch(e){
     // комната могла кратко не прочитаться — пробуем явный rejoin по токену
     try{

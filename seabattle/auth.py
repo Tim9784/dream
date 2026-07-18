@@ -59,7 +59,6 @@ def public_user(row: dict[str, Any]) -> dict[str, Any]:
 
 def site_base_url() -> str:
     cfg = load_config()
-    # По умолчанию http: на omove.ru HTTPS сейчас часто недоступен (SSL не подключён).
     url = str(cfg.get("site_url") or "https://omove.ru").strip().rstrip("/")
     return url or "https://omove.ru"
 
@@ -121,21 +120,14 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
                 {html.escape(code)}
               </div>
               <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
-                Открой omove.ru → «Войти» → вставь код. Или перейди по ссылке и нажми «Войти». Срок — 30 минут.
+                Надёжный способ: сайт → «Войти» → вставь код выше. Срок — 30 минут.
               </div>
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 22px auto;">
-                <tr>
-                  <td align="center" bgcolor="#38bdf8" style="border-radius:10px;">
-                    <a href="{href}" target="_blank"
-                       style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#042029;text-decoration:none;border-radius:10px;">
-                      Открыть страницу входа
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Ссылка:</div>
-              <div style="font-size:14px;line-height:1.5;margin:0;">
-                <a href="{href}" target="_blank" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 8px 0;">Ссылка (если открывается):</div>
+              <div style="font-size:15px;line-height:1.6;margin:0 0 8px 0;">
+                <a href="{href}" style="color:#7dd3fc;text-decoration:underline;word-break:break-all;">{href}</a>
+              </div>
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0;">
+                Нажми на синюю ссылку выше — откроется страница, там кнопка «Войти».
               </div>
               <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:20px 0 0 0;">
                 Если ты не запрашивал вход — просто удали письмо.
@@ -247,7 +239,14 @@ def create_magic_link(email: str, name: str) -> str:
 
 
 def magic_login_url(token: str) -> str:
-    return f"{site_base_url()}/a/{token}"
+    # В письмах даём http:// — на Masterhost https часто не открывается с телефона.
+    # Когда DNS/SSL починены, http всё равно откроет сайт (или редиректнет).
+    base = site_base_url()
+    if base.startswith("https://"):
+        base = "http://" + base[len("https://") :]
+    elif not base.startswith("http://"):
+        base = "http://omove.ru"
+    return f"{base.rstrip('/')}/a/{token}"
 
 
 def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:

@@ -215,6 +215,10 @@ def count_rooms() -> int:
 
 
 def save_room(code: str, room: dict[str, Any]) -> None:
+    try:
+        room["rev"] = int(room.get("rev") or 0) + 1
+    except (TypeError, ValueError):
+        room["rev"] = 1
     rds.setex(room_key(code), ROOM_TTL, json.dumps(room, ensure_ascii=False))
 
 
@@ -393,6 +397,7 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "rematch_votes": {s: bool(votes.get(s)) for s in human_slots},
         "rematch_ready": bool(human_slots) and all(votes.get(s) for s in human_slots),
         "win_chance": win_pct,
+        "rev": int(room.get("rev") or 0),
         "game_state": game_view,
     }
 
