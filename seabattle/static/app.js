@@ -293,6 +293,17 @@ async function logoutUser(){
   loadRating();
 }
 
+function extractAuthToken(raw){
+  const s = String(raw || '').trim();
+  if(!s) return '';
+  const m = s.match(/\/a\/([0-9a-fA-F]{16,64})/);
+  if(m) return m[1].toLowerCase();
+  const m2 = s.match(/[?&]auth=([0-9a-fA-F]{16,64})/);
+  if(m2) return m2[1].toLowerCase();
+  if(/^[0-9a-fA-F]{16,64}$/.test(s)) return s.toLowerCase();
+  return '';
+}
+
 async function sendAuthLink(){
   const email = ($('authEmail') && $('authEmail').value || '').trim();
   const name = ($('authName') && $('authName').value || '').trim();
@@ -303,11 +314,27 @@ async function sendAuthLink(){
       method: 'POST',
       body: JSON.stringify({email, name}),
     });
-    let msg = `Письмо отправлено на ${data.email || email}. Открой кнопку или ссылку из письма (она короткая: omove.ru/a/…).`;
+    let msg = `Письмо отправлено на ${data.email || email}. Открой ссылку из письма или скопируй код сюда в поле ниже.`;
     if(data.hint) msg += ' ' + data.hint;
     $('authHint').textContent = msg;
   }catch(e){
     $('authErr').textContent = e.message || 'Не удалось отправить';
+  }
+}
+
+async function loginWithAuthCode(){
+  $('authErr').textContent = '';
+  $('authHint').textContent = '';
+  const token = extractAuthToken($('authCode') && $('authCode').value);
+  if(!token){
+    $('authErr').textContent = 'Вставь код или ссылку вида omove.ru/a/…';
+    return;
+  }
+  try{
+    // относительный путь — работает даже когда https с телефона ломается
+    location.href = '/a/' + encodeURIComponent(token);
+  }catch(e){
+    $('authErr').textContent = e.message || 'Не удалось открыть вход';
   }
 }
 
@@ -367,6 +394,7 @@ async function loadRating(){
 
 if($('btnAuthClose')) $('btnAuthClose').onclick = closeAuthModal;
 if($('btnAuthSend')) $('btnAuthSend').onclick = sendAuthLink;
+if($('btnAuthCode')) $('btnAuthCode').onclick = loginWithAuthCode;
 if($('btnLogin')) $('btnLogin').onclick = openAuthModal;
 if($('authModal')){
   $('authModal').addEventListener('click', (e)=>{

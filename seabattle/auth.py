@@ -59,8 +59,9 @@ def public_user(row: dict[str, Any]) -> dict[str, Any]:
 
 def site_base_url() -> str:
     cfg = load_config()
-    url = str(cfg.get("site_url") or "https://omove.ru").strip().rstrip("/")
-    return url or "https://omove.ru"
+    # По умолчанию http: на omove.ru HTTPS сейчас часто недоступен (SSL не подключён).
+    url = str(cfg.get("site_url") or "http://omove.ru").strip().rstrip("/")
+    return url or "http://omove.ru"
 
 
 def mail_from_parts() -> tuple[str, str]:
@@ -79,12 +80,17 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
     """Возвращает (text_body, html_body)."""
     safe_name = name.strip() or "Игрок"
     # короткая ссылка целиком на одной строке — её легко скопировать
+    # короткий код — если https/ссылка с телефона не открывается
+    code = link.rstrip("/").rsplit("/", 1)[-1]
     text = (
         "Omove.ru — вход\n"
         "\n"
         f"Привет, {safe_name}!\n"
         "\n"
-        "Открой ссылку и нажми кнопку «Войти» на сайте (действует 30 минут):\n"
+        "1) Открой сайт omove.ru → Войти → вставь код:\n"
+        f"{code}\n"
+        "\n"
+        "2) Или открой ссылку и нажми «Войти» (30 минут):\n"
         f"{link}\n"
         "\n"
         "Если ты не запрашивал вход — просто удали письмо.\n"
@@ -108,8 +114,14 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
             <td style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8f1f8;">
               <div style="font-size:26px;font-weight:700;color:#7dd3fc;margin:0 0 16px 0;">Omove.ru</div>
               <div style="font-size:16px;line-height:1.5;margin:0 0 8px 0;">Привет, {name_html}!</div>
+              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 14px 0;">
+                Код для входа на сайте (если ссылка с телефона не открывается):
+              </div>
+              <div style="font-size:22px;font-weight:700;letter-spacing:0.04em;color:#e8f1f8;margin:0 0 22px 0;font-family:Consolas,Monaco,monospace;">
+                {html.escape(code)}
+              </div>
               <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
-                Открой ссылку ниже — на сайте нажми «Войти». Ссылка действует 30 минут.
+                Открой omove.ru → «Войти» → вставь код. Или перейди по ссылке и нажми «Войти». Срок — 30 минут.
               </div>
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 22px auto;">
                 <tr>
@@ -121,7 +133,7 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
                   </td>
                 </tr>
               </table>
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Или скопируй ссылку:</div>
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Ссылка:</div>
               <div style="font-size:14px;line-height:1.5;margin:0;">
                 <a href="{href}" target="_blank" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
               </div>
