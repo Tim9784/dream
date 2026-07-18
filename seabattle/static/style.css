@@ -812,6 +812,7 @@ html[data-theme="light"] .bar-col .bar{background:linear-gradient(180deg,#52525b
   animation:rise .28s ease both;
 }
 .modal-card.confirm-card{width:min(400px,100%)}
+.confirm-title{display:block;font-size:1.15rem;font-weight:700;letter-spacing:-.01em}
 .confirm-actions{
   margin-top:16px;
   justify-content:flex-end;
