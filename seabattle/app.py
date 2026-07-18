@@ -45,7 +45,9 @@ RL_JOIN = (15, 60)
 RL_ACTION = (240, 60)
 RL_POLL = (180, 60)
 RL_GLOBAL_WRITE = (400, 10)
-RL_AUTH = (5, 60 * 60)
+# Ссылки на почту: по IP мягче (NAT/общий Wi‑Fi), по email строже
+RL_AUTH_IP = (20, 60 * 60)
+RL_AUTH_EMAIL = (5, 60 * 60)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_JSON_BYTES
@@ -567,13 +569,22 @@ def api_me():
 @app.post("/api/auth/request-link")
 def api_auth_request_link():
     ip = g.client_ip
-    if not rate_limit(f"auth:{ip}", RL_AUTH[0], RL_AUTH[1]):
-        return too_many()
     data = read_json()
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    email = auth_mod.normalize_email(data.get("email"))
+    if not email:
+        return jsonify({"ok": False, "error": "Укажи корректный email"}), 400
+    # сначала проверяем лимиты, не сжигая попытки на невалидном email
+    if not rate_limit(f"authip:{ip}", RL_AUTH_IP[0], RL_AUTH_IP[1]):
+        return too_many()
+    if not rate_limit(f"authemail:{email}", RL_AUTH_EMAIL[0], RL_AUTH_EMAIL[1]):
+        return jsonify({
+            "ok": False,
+            "error": "На этот email уже отправляли ссылку. Подожди немного или проверь почту (и «Спам»).",
+        }), 429
     try:
-        result = auth_mod.request_login_link(data.get("email"), data.get("name"))
+        result = auth_mod.request_login_link(email, data.get("name"))
     except Exception:
         return jsonify({"ok": False, "error": "Не удалось отправить письмо. Попробуй позже."}), 502
     if not result.get("ok"):
