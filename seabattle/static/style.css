@@ -773,12 +773,17 @@ html[data-theme="light"] .bar-col .bar{background:linear-gradient(180deg,#52525b
   to{opacity:1;transform:translateY(0)}
 }
 
-.header-actions{display:flex;align-items:flex-start;gap:8px;flex-shrink:0}
-.account-box{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;justify-content:flex-end}
+.header-actions{
+  display:flex;flex-direction:column;align-items:stretch;gap:8px;flex-shrink:0;margin-top:10px;
+  min-width:118px;
+}
+.header-actions .theme-btn{margin-top:0;width:100%}
+.account-box{display:flex;flex-direction:column;align-items:stretch;gap:8px;justify-content:flex-end}
+.account-box .theme-btn{width:100%}
 .account-chip{
-  display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;
   padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--chip);
-  min-width:0;max-width:180px;
+  min-width:0;max-width:none;
 }
 .account-chip strong{font-size:.95rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .account-chip small{color:var(--soft);font-size:.78rem}
