@@ -84,7 +84,7 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
         "\n"
         f"Привет, {safe_name}!\n"
         "\n"
-        "Открой ссылку для входа (действует 30 минут):\n"
+        "Открой ссылку и нажми кнопку «Войти» на сайте (действует 30 минут):\n"
         f"{link}\n"
         "\n"
         "Если ты не запрашивал вход — просто удали письмо.\n"
@@ -109,19 +109,19 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
               <div style="font-size:26px;font-weight:700;color:#7dd3fc;margin:0 0 16px 0;">Omove.ru</div>
               <div style="font-size:16px;line-height:1.5;margin:0 0 8px 0;">Привет, {name_html}!</div>
               <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
-                Нажми кнопку, чтобы войти на сайт. Ссылка действует 30 минут.
+                Открой ссылку ниже — на сайте нажми «Войти». Ссылка действует 30 минут.
               </div>
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 22px auto;">
                 <tr>
                   <td align="center" bgcolor="#38bdf8" style="border-radius:10px;">
                     <a href="{href}" target="_blank"
                        style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#042029;text-decoration:none;border-radius:10px;">
-                      Войти на Omove.ru
+                      Открыть страницу входа
                     </a>
                   </td>
                 </tr>
               </table>
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Или открой ссылку:</div>
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Или скопируй ссылку:</div>
               <div style="font-size:14px;line-height:1.5;margin:0;">
                 <a href="{href}" target="_blank" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
               </div>
@@ -355,6 +355,32 @@ def delete_session(token: str) -> None:
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM `omove_sessions` WHERE `token`=%s", (token,))
+
+
+def peek_magic_token(token: str) -> Optional[dict[str, Any]]:
+    """Проверяет ссылку, не погашая её (чтобы префетч почты не сжигал вход)."""
+    token = normalize_magic_token(token)
+    if not token:
+        return None
+    ensure_schema()
+    now = time.time()
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT `token`, `email`, `name`, `exp` FROM `omove_magic` WHERE `token`=%s LIMIT 1",
+                (token,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            if float(row["exp"]) <= now:
+                cur.execute("DELETE FROM `omove_magic` WHERE `token`=%s", (token,))
+                return None
+    return {
+        "token": str(row["token"]),
+        "email": normalize_email(row["email"]),
+        "name": normalize_display_name(row["name"]),
+    }
 
 
 def consume_magic_token(token: str) -> Optional[dict[str, Any]]:

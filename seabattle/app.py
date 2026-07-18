@@ -620,16 +620,53 @@ def api_auth_verify():
 
 @app.get("/a/<token>")
 def auth_click_link(token: str):
-    """Клик по ссылке из письма: ставит сессию и открывает главную."""
+    """Открытие ссылки из письма: только страница подтверждения.
+
+    Почтовые сканеры часто делают GET заранее и иначе сжигают одноразовый токен.
+    """
     ip = g.client_ip
-    if not rate_limit(f"authv:{ip}", 20, 60):
+    if not rate_limit(f"authv:{ip}", 40, 60):
         return too_many()
+    try:
+        info = auth_mod.peek_magic_token(token)
+    except Exception:
+        info = None
+    if not info:
+        return render_template(
+            "auth_confirm.html",
+            site_title=SITE_TITLE,
+            invalid=True,
+            token="",
+            name="",
+        )
+    return render_template(
+        "auth_confirm.html",
+        site_title=SITE_TITLE,
+        invalid=False,
+        token=info["token"],
+        name=info.get("name") or "",
+    )
+
+
+@app.post("/a/<token>")
+def auth_confirm_link(token: str):
+    """Подтверждение входа кнопкой — здесь токен погашается."""
+    ip = g.client_ip
+    if not rate_limit(f"authv:{ip}", 40, 60):
+        return too_many()
+    # POST тоже проходит global write rate-limit в before_request
     try:
         result = auth_mod.consume_magic_token(token)
     except Exception:
-        return redirect("/?auth_err=1")
+        result = None
     if not result:
-        return redirect("/?auth_err=1")
+        return render_template(
+            "auth_confirm.html",
+            site_title=SITE_TITLE,
+            invalid=True,
+            token="",
+            name="",
+        )
     resp = make_response(redirect("/?auth_ok=1", code=302))
     return set_session_cookie(resp, result["session"])
 

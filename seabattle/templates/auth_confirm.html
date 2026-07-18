@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход — {{ site_title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=20260718g">
+</head>
+<body>
+<div class="wrap" style="max-width:480px;padding-top:48px">
+  <h1 class="brand" style="font-size:2.2rem;margin-bottom:8px">{{ site_title }}</h1>
+  <section class="panel">
+    {% if invalid %}
+      <h2 class="section-title">Ссылка не работает</h2>
+      <p class="hint" style="text-align:left">Она уже использована или устарела. Вернись на сайт и запроси новую.</p>
+      <div class="row" style="margin-top:16px">
+        <a class="btn" href="/">На главную</a>
+      </div>
+    {% else %}
+      <h2 class="section-title">Подтверди вход</h2>
+      <p class="hint" style="text-align:left">Нажми кнопку ниже, чтобы войти{% if name %} как <strong>{{ name }}</strong>{% endif %}.</p>
+      <form method="post" action="/a/{{ token }}" style="margin-top:18px">
+        <button type="submit" class="btn" style="width:100%">Войти на {{ site_title }}</button>
+      </form>
+      <p class="hint" style="text-align:left;margin-top:14px">Это защита от автоматического открытия ссылки почтовым приложением.</p>
+    {% endif %}
+  </section>
+</div>
+</body>
+</html>
