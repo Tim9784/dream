@@ -760,13 +760,18 @@ function applyState(s, opts={}){
   } else if(s.phase==='done'){
     show('done');
     setWinChance(s);
+    const finSig = [s.code||'', s.game||'', s.winner||'', s.loser||'', s.result||'', s.message||''].join('|');
+    const enteredDone = finSig !== lastFinishedSig;
     trackGameFinished(s);
-    refreshMe();
-    loadRating();
-    startPoll(); // чтобы увидеть рематч от друзей
+    // рейтинг/аккаунт — один раз при входе на экран конца, не на каждом poll
+    if(enteredDone){
+      refreshMe();
+      loadRating();
+    }
+    if(!pollTimer) startPoll(); // чтобы увидеть рематч от друзей
     const voted = !!(s.you && s.rematch_votes && s.rematch_votes[s.you]);
     const rematchBtn = $('btnReplay');
-    if(rematchBtn){
+    if(rematchBtn && !rematchBusy){
       if(s.vs_ai || s.vs_local){
         rematchBtn.textContent = 'Играть заново';
         rematchBtn.disabled = false;
@@ -1962,39 +1967,68 @@ if($('btnStartGame')) $('btnStartGame').onclick = async ()=>{
 
 $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,6); });
 $('btnAgain').onclick=()=>goHome();
+let rematchBusy = false;
 $('btnReplay').onclick = async ()=>{
-  // та же комната: рематч с теми же людьми / роботом
-  if(state && code && token && state.phase==='done'){
-    try{
-      const data = await api(`/api/room/${code}/rematch`, {
-        method:'POST', body:JSON.stringify({token})
-      });
-      if(data.state){
-        applyState(data.state);
-        startPoll();
-        return;
-      }
-    }catch(e){
-      // если комната умерла — создадим новую ниже
-      if(!String(e.message||'').includes('не найдена') && !String(e.message||'').includes('Не найдена')){
-        $('doneStatus').textContent = e.message;
-        return;
+  if(rematchBusy) return;
+  rematchBusy = true;
+  const rematchBtn = $('btnReplay');
+  if(rematchBtn) rematchBtn.disabled = true;
+  try{
+    // та же комната: рематч с теми же людьми / роботом
+    if(state && code && token && state.phase==='done'){
+      try{
+        const data = await api(`/api/room/${code}/rematch`, {
+          method:'POST', body:JSON.stringify({token})
+        });
+        if(data.state){
+          lastPlaySig = '';
+          applyState(data.state, {force:true});
+          startPoll();
+          return;
+        }
+      }catch(e){
+        const msg = String(e.message||'');
+        // комната могла уже уйти с экрана done (гонка/повторный клик) — подтянем состояние
+        try{
+          const cur = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
+          if(cur.state){
+            lastPlaySig = '';
+            applyState(cur.state, {force:true});
+            startPoll();
+            if(cur.state.phase !== 'done') return;
+          }
+        }catch(_){}
+        // комната умерла — создадим новую ниже; прочие ошибки не блокируем навечно
+        if(!/не найдена/i.test(msg) && !/не окончена/i.test(msg) && !/ещё не/i.test(msg)){
+          if($('doneStatus')) $('doneStatus').textContent = msg;
+          return;
+        }
       }
     }
-  }
-  chosenGame = lastSettings.game || chosenGame;
-  chosenBoard = lastSettings.size || chosenBoard;
-  chosenPlayers = lastSettings.players || chosenPlayers;
-  if($('name') && lastSettings.name) $('name').value = lastSettings.name;
-  if($('name2') && lastSettings.name2) $('name2').value = lastSettings.name2;
-  document.querySelectorAll('#sizePick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
-  document.querySelectorAll('#playersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
-  if(lastSettings.vsLocal){
-    setLocalNamesVisible(true);
-    await startGame({vsLocalMode:true});
-  } else {
-    setLocalNamesVisible(false);
-    await startGame({vsAi:!!lastSettings.vsAi});
+    chosenGame = lastSettings.game || chosenGame;
+    chosenBoard = lastSettings.size || chosenBoard;
+    chosenPlayers = lastSettings.players || chosenPlayers;
+    if($('name') && lastSettings.name) $('name').value = lastSettings.name;
+    if($('name2') && lastSettings.name2) $('name2').value = lastSettings.name2;
+    if(currentUser && currentUser.name) applyAccountNameToForm();
+    document.querySelectorAll('#sizePick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.size===chosenBoard));
+    document.querySelectorAll('#playersPick .size-btn').forEach(x=>x.classList.toggle('active', x.dataset.players===String(chosenPlayers)));
+    if(lastSettings.vsLocal){
+      setLocalNamesVisible(true);
+      await startGame({vsLocalMode:true});
+    } else {
+      setLocalNamesVisible(false);
+      await startGame({vsAi:!!lastSettings.vsAi});
+    }
+  }finally{
+    rematchBusy = false;
+    // кнопку вернёт applyState; если остались на done — разблокируем
+    if(rematchBtn && state && state.phase==='done' && !state.vs_ai && !state.vs_local){
+      const voted = !!(state.you && state.rematch_votes && state.rematch_votes[state.you]);
+      rematchBtn.disabled = !!voted;
+    } else if(rematchBtn && (!state || state.phase==='done')){
+      rematchBtn.disabled = false;
+    }
   }
 };
 

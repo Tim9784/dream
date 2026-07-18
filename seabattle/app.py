@@ -1005,8 +1005,15 @@ def rematch_room(code: str):
     slot = player_slot(room, token)
     if not slot:
         return jsonify({"ok": False, "error": "Нет доступа"}), 403
+    # повторный клик / другой игрок уже перезапустил — отдаём актуальное состояние,
+    # а не ошибку «партия ещё не окончена»
     if room["phase"] != "done":
-        return jsonify({"ok": False, "error": "Партия ещё не окончена"}), 409
+        return jsonify({
+            "ok": True,
+            "restarted": False,
+            "already_started": True,
+            "state": public_state(room, slot),
+        })
 
     votes = room.setdefault("rematch_votes", {})
     # локально / с роботом — сразу новая партия
@@ -1014,6 +1021,14 @@ def rematch_room(code: str):
         restart_game_room(room)
         save_room(code, room)
         return jsonify({"ok": True, "restarted": True, "state": public_state(room, slot)})
+
+    # уже голосовал — не дублируем, просто вернём состояние (ждём остальных)
+    if votes.get(slot):
+        return jsonify({
+            "ok": True,
+            "restarted": False,
+            "state": public_state(room, slot),
+        })
 
     votes[slot] = True
     humans = [s for s, p in (room.get("players") or {}).items() if p and not p.get("ai")]
