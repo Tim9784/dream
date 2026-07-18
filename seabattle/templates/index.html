@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260718a">
+<link rel="stylesheet" href="/static/style.css?v=20260718c">
 <script>
 (function(){
   try{
@@ -60,7 +60,12 @@
       <h1 class="brand">{{ site_title }}</h1>
       <p class="tag">Выбери игру — создай комнату или зайди по коду.</p>
     </div>
-    <button type="button" class="theme-btn" id="btnTheme">Тема</button>
+    <div class="header-actions">
+      <div class="account-box" id="accountBox">
+        <button type="button" class="theme-btn" id="btnLogin">Войти</button>
+      </div>
+      <button type="button" class="theme-btn" id="btnTheme">Тема</button>
+    </div>
   </div>
 
   <section id="home" class="panel">
@@ -68,7 +73,34 @@
     <div class="game-grid" id="gameGrid"></div>
     <p class="hint">Нажми на игру, чтобы начать</p>
     <div class="err" id="homeErr"></div>
+
+    <hr class="soft-hr">
+    <div class="rating-head">
+      <h2 class="section-title" style="margin:0">Рейтинг</h2>
+      <span class="hint" style="margin:0">По числу побед</span>
+    </div>
+    <ol class="rating-list" id="ratingList"></ol>
+    <p class="hint" id="ratingHint">Войди по email — победы в играх попадут в рейтинг.</p>
   </section>
+
+  <div id="authModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-labelledby="authTitle">
+      <div class="topbar">
+        <strong id="authTitle">Вход на сайт</strong>
+        <button type="button" class="btn danger" id="btnAuthClose">Закрыть</button>
+      </div>
+      <p class="hint" style="text-align:left;margin-top:8px">Укажи email — пришлём ссылку для входа и регистрации. Пароль не нужен.</p>
+      <div class="row" style="margin-top:12px">
+        <label style="flex:1"><span>Email</span><input id="authEmail" type="email" maxlength="120" placeholder="you@mail.ru" autocomplete="email"></label>
+        <label style="flex:1"><span>Имя в играх</span><input id="authName" type="text" maxlength="20" placeholder="Лиса" autocomplete="nickname"></label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button type="button" class="btn" id="btnAuthSend">Получить ссылку</button>
+      </div>
+      <div class="hint" id="authHint" style="text-align:left;margin-top:10px"></div>
+      <div class="err" id="authErr"></div>
+    </div>
+  </div>
 
   <section id="setup" class="panel hidden">
     <div class="topbar">
@@ -163,6 +195,6 @@
     <a class="bugreport-link" href="https://t.me/Omovebugreport_bot" target="_blank" rel="noopener noreferrer">Сообщить о баге в Telegram</a>
   </footer>
 </div>
-<script src="/static/app.js?v=20260718a"></script>
+<script src="/static/app.js?v=20260718c"></script>
 </body>
 </html>

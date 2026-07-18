@@ -1,6 +1,9 @@
 {
   "secret_key": "change-me",
   "debug": false,
+  "site_title": "Omove.ru",
+  "site_url": "https://omove.ru",
+  "mail_from": "Omove.ru <noreply@omove.ru>",
   "mysql": {
     "host": "u549672.mysql.masterhost.ru",
     "port": 3306,

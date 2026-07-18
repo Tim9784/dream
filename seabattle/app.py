@@ -11,10 +11,13 @@ import tempfile
 import time
 from typing import Any
 
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, make_response, render_template, request
 
+import auth as auth_mod
 from games import GAMES, get_game
 from memory_store import FileStore, MemoryStore, MySQLStore
+from ratings import leaderboard as rating_leaderboard
+from ratings import maybe_record_finished
 from stats import snapshot as stats_snapshot
 from stats import track_finished, track_join, track_room_created, track_visit
 
@@ -42,6 +45,7 @@ RL_JOIN = (15, 60)
 RL_ACTION = (240, 60)
 RL_POLL = (180, 60)
 RL_GLOBAL_WRITE = (400, 10)
+RL_AUTH = (5, 60 * 60)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_JSON_BYTES
@@ -61,6 +65,7 @@ def _load_config() -> dict[str, Any]:
 
 
 _CFG = _load_config()
+app.config["SECRET_KEY"] = str(_CFG.get("secret_key") or secrets.token_hex(24))
 
 
 def _make_store():
@@ -117,6 +122,50 @@ SITE_TITLE = str(_CFG.get("site_title") or "Omove.ru").strip() or "Omove.ru"
 STATS_PATH = str(_CFG.get("stats_path") or "m-k7p2qx9w").strip().strip("/")
 if not re.fullmatch(r"[A-Za-z0-9_-]{6,64}", STATS_PATH):
     STATS_PATH = "m-k7p2qx9w"
+
+
+def current_user() -> dict[str, Any] | None:
+    return getattr(g, "user", None)
+
+
+def attach_user_to_player(player: dict[str, Any], user: dict[str, Any] | None) -> None:
+    if not user:
+        return
+    player["user_id"] = int(user["id"])
+
+
+def mark_game_finished(room: dict[str, Any]) -> None:
+    """Сайт-статистика + рейтинг авторизованных игроков."""
+    if not room.get("stats_finished"):
+        room["stats_finished"] = True
+        track_finished(rds, room.get("game") or "")
+    maybe_record_finished(room)
+
+
+def set_session_cookie(resp, token: str):
+    resp.set_cookie(
+        auth_mod.SESSION_COOKIE,
+        token,
+        max_age=auth_mod.SESSION_TTL,
+        httponly=True,
+        samesite="Lax",
+        secure=request.is_secure,
+        path="/",
+    )
+    return resp
+
+
+def clear_session_cookie(resp):
+    resp.set_cookie(
+        auth_mod.SESSION_COOKIE,
+        "",
+        max_age=0,
+        httponly=True,
+        samesite="Lax",
+        secure=request.is_secure,
+        path="/",
+    )
+    return resp
 
 
 def room_key(code: str) -> str:
@@ -273,6 +322,7 @@ def restart_game_room(room: dict[str, Any]) -> None:
     room["state"] = mod.init_state(options)
     room["turn"] = None
     room["ai_due"] = None
+    room["ratings_recorded"] = False
     start_game_room(room)
 
 
@@ -421,10 +471,18 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 @app.before_request
 def security_gate():
     g.client_ip = client_ip()
+    g.user = None
     # отсекаем явно битые пути
     path = request.path or "/"
     if ".." in path or path.startswith("//"):
         return jsonify({"ok": False, "error": "Forbidden"}), 403
+
+    sid = request.cookies.get(auth_mod.SESSION_COOKIE) or ""
+    if sid:
+        try:
+            g.user = auth_mod.user_from_session(sid)
+        except Exception:
+            g.user = None
 
     if request.method == "POST":
         ip = g.client_ip
@@ -501,6 +559,75 @@ def list_games():
     })
 
 
+@app.get("/api/me")
+def api_me():
+    return jsonify({"ok": True, "user": current_user()})
+
+
+@app.post("/api/auth/request-link")
+def api_auth_request_link():
+    ip = g.client_ip
+    if not rate_limit(f"auth:{ip}", RL_AUTH[0], RL_AUTH[1]):
+        return too_many()
+    data = read_json()
+    if data is None:
+        return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    try:
+        result = auth_mod.request_login_link(data.get("email"), data.get("name"))
+    except Exception:
+        return jsonify({"ok": False, "error": "Не удалось отправить письмо. Попробуй позже."}), 502
+    if not result.get("ok"):
+        return jsonify(result), 400
+    return jsonify({
+        "ok": True,
+        "email": result.get("email"),
+        "message": "Ссылка для входа отправлена на email",
+    })
+
+
+@app.post("/api/auth/verify")
+def api_auth_verify():
+    ip = g.client_ip
+    if not rate_limit(f"authv:{ip}", 20, 60):
+        return too_many()
+    data = read_json()
+    if data is None:
+        return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    token = str(data.get("token") or "").strip().lower()
+    try:
+        result = auth_mod.consume_magic_token(token)
+    except Exception:
+        return jsonify({"ok": False, "error": "Ошибка авторизации"}), 500
+    if not result:
+        return jsonify({"ok": False, "error": "Ссылка недействительна или устарела"}), 400
+    resp = make_response(jsonify({"ok": True, "user": result["user"]}))
+    return set_session_cookie(resp, result["session"])
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout():
+    sid = request.cookies.get(auth_mod.SESSION_COOKIE) or ""
+    try:
+        auth_mod.delete_session(sid)
+    except Exception:
+        pass
+    resp = make_response(jsonify({"ok": True}))
+    return clear_session_cookie(resp)
+
+
+@app.get("/api/rating")
+def api_rating():
+    try:
+        limit = int(request.args.get("limit") or 20)
+    except (TypeError, ValueError):
+        limit = 20
+    try:
+        rows = rating_leaderboard(limit)
+    except Exception:
+        rows = []
+    return jsonify({"ok": True, "rating": rows, "user": current_user()})
+
+
 @app.post("/api/room/create")
 def create_room():
     ip = g.client_ip
@@ -516,7 +643,9 @@ def create_room():
     if game_id not in GAMES:
         return jsonify({"ok": False, "error": "Выбери игру"}), 400
     mod = GAMES[game_id]["module"]
-    name = normalize_name(data.get("name"))
+    user = current_user()
+    default_name = (user or {}).get("name") if user else None
+    name = normalize_name(data.get("name"), default_name)
     name2 = normalize_name(data.get("name2"), random_animal(name))
     vs_ai = bool(data.get("vs_ai"))
     vs_local = bool(data.get("vs_local"))
@@ -543,6 +672,7 @@ def create_room():
 
     players = {s: None for s in SLOTS[:max_p]}
     players["p1"] = {"token": token, "name": name, "ai": False}
+    attach_user_to_player(players["p1"], user)
     room = {
         "code": code,
         "game": game_id,
@@ -560,6 +690,7 @@ def create_room():
         "ai_slot": "p2" if vs_ai else None,
         "players": players,
         "rematch_votes": {},
+        "ratings_recorded": False,
         "state": mod.init_state(options),
     }
 
@@ -608,7 +739,8 @@ def join_room():
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
     code = str(data.get("code", "")).strip()
-    name = normalize_name(data.get("name"))
+    user = current_user()
+    name = normalize_name(data.get("name"), (user or {}).get("name") if user else None)
     token_in = str(data.get("token") or "")
     if not code.isdigit() or len(code) != CODE_LEN:
         return jsonify({"ok": False, "error": "Код — 6 цифр"}), 400
@@ -629,6 +761,7 @@ def join_room():
             player.pop("disconnected_at", None)
             if name:
                 player["name"] = name
+            attach_user_to_player(player, current_user())
             room["players"][seat] = player
             save_room(code, room)
             return jsonify({
@@ -652,6 +785,7 @@ def join_room():
 
     token = secrets.token_hex(16)
     room["players"][seat] = {"token": token, "name": name, "ai": False, "connected": True}
+    attach_user_to_player(room["players"][seat], current_user())
     filled = len(filled_slots(room))
     max_p = int(room.get("max_players") or 2)
     names = [
@@ -730,9 +864,8 @@ def get_room(code: str):
         before = json.dumps(room, sort_keys=True, default=str)
         run_ai_turns(room)
         after = json.dumps(room, sort_keys=True, default=str)
-        if (not was_done) and room.get("phase") == "done" and not room.get("stats_finished"):
-            room["stats_finished"] = True
-            track_finished(rds, room.get("game") or "")
+        if (not was_done) and room.get("phase") == "done":
+            mark_game_finished(room)
             dirty = True
         if before != after:
             dirty = True
@@ -781,9 +914,8 @@ def room_action(code: str):
         return jsonify({"ok": False, "error": err}), 400
 
     maybe_schedule_ai(room)
-    if (not was_done) and room.get("phase") == "done" and not room.get("stats_finished"):
-        room["stats_finished"] = True
-        track_finished(rds, room.get("game") or "")
+    if (not was_done) and room.get("phase") == "done":
+        mark_game_finished(room)
     save_room(code, room)
     return jsonify({"ok": True, "state": public_state(room, slot)})
 
@@ -867,9 +999,7 @@ def leave_room(code: str):
         else:
             room["winner"] = None
             room["message"] = f"{leaver} вышел. Партия окончена"
-        if not room.get("stats_finished"):
-            room["stats_finished"] = True
-            track_finished(rds, room.get("game") or "")
+        mark_game_finished(room)
         save_room(code, room)
         return jsonify({"ok": True, "left": True})
 

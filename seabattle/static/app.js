@@ -219,6 +219,7 @@ document.querySelectorAll('.size-btn').forEach(btn=>{
 
 async function api(path, opts={}){
   const res = await fetch(path, {
+    credentials: 'same-origin',
     headers:{'Content-Type':'application/json', ...(opts.headers||{})},
     ...opts
   });
@@ -226,6 +227,165 @@ async function api(path, opts={}){
   if(!res.ok || data.ok===false) throw new Error(data.error || 'Ошибка запроса');
   return data;
 }
+
+let currentUser = null;
+
+function renderAccount(){
+  const box = $('accountBox');
+  if(!box) return;
+  if(currentUser){
+    box.innerHTML = `
+      <div class="account-chip" title="${currentUser.email || ''}">
+        <strong>${escapeHtml(currentUser.name || 'Игрок')}</strong>
+        <small>${Number(currentUser.wins||0)} побед</small>
+      </div>
+      <button type="button" class="theme-btn" id="btnLogout" style="margin-top:0">Выйти</button>
+    `;
+    const btn = $('btnLogout');
+    if(btn) btn.onclick = logoutUser;
+    if($('name') && (!$('name').value || $('name').dataset.fromUser === '1')){
+      $('name').value = currentUser.name || '';
+      $('name').dataset.fromUser = '1';
+    }
+    if($('authName')) $('authName').value = currentUser.name || '';
+  }else{
+    box.innerHTML = `<button type="button" class="theme-btn" id="btnLogin" style="margin-top:0">Войти</button>`;
+    const btn = $('btnLogin');
+    if(btn) btn.onclick = openAuthModal;
+  }
+}
+
+function escapeHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function openAuthModal(){
+  const m = $('authModal');
+  if(!m) return;
+  $('authErr').textContent = '';
+  $('authHint').textContent = '';
+  if(currentUser && $('authName')) $('authName').value = currentUser.name || '';
+  m.classList.remove('hidden');
+  m.setAttribute('aria-hidden', 'false');
+  if($('authEmail')) $('authEmail').focus();
+}
+function closeAuthModal(){
+  const m = $('authModal');
+  if(!m) return;
+  m.classList.add('hidden');
+  m.setAttribute('aria-hidden', 'true');
+}
+
+async function refreshMe(){
+  try{
+    const data = await api('/api/me');
+    currentUser = data.user || null;
+  }catch(_){
+    currentUser = null;
+  }
+  renderAccount();
+}
+
+async function logoutUser(){
+  try{ await api('/api/auth/logout', {method:'POST', body:'{}'}); }catch(_){}
+  currentUser = null;
+  renderAccount();
+  loadRating();
+}
+
+async function sendAuthLink(){
+  const email = ($('authEmail') && $('authEmail').value || '').trim();
+  const name = ($('authName') && $('authName').value || '').trim();
+  $('authErr').textContent = '';
+  $('authHint').textContent = '';
+  try{
+    const data = await api('/api/auth/request-link', {
+      method: 'POST',
+      body: JSON.stringify({email, name}),
+    });
+    $('authHint').textContent = `Письмо отправлено на ${data.email || email}. Открой ссылку из письма, чтобы войти.`;
+  }catch(e){
+    $('authErr').textContent = e.message || 'Не удалось отправить';
+  }
+}
+
+async function verifyAuthToken(token){
+  try{
+    const data = await api('/api/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify({token}),
+    });
+    currentUser = data.user || null;
+    renderAccount();
+    loadRating();
+    if($('homeErr')) $('homeErr').textContent = currentUser
+      ? `Вы вошли как ${currentUser.name}. Победы будут в рейтинге.`
+      : '';
+  }catch(e){
+    if($('homeErr')) $('homeErr').textContent = e.message || 'Ссылка для входа не сработала';
+  }
+  try{
+    const u = new URL(location.href);
+    if(u.searchParams.has('auth')){
+      u.searchParams.delete('auth');
+      history.replaceState(history.state || {}, '', u.pathname + u.search + u.hash);
+    }
+  }catch(_){}
+}
+
+async function loadRating(){
+  const list = $('ratingList');
+  if(!list) return;
+  try{
+    const data = await api('/api/rating?limit=15');
+    const rows = data.rating || [];
+    if(data.user) currentUser = data.user;
+    if(!rows.length){
+      list.innerHTML = '';
+      if($('ratingHint')) $('ratingHint').textContent = 'Пока нет побед в рейтинге. Войди и выиграй партию.';
+      return;
+    }
+    list.innerHTML = rows.map((r, i) => {
+      const me = currentUser && Number(currentUser.id) === Number(r.id);
+      return `<li class="${me?'me':''}" style="animation-delay:${Math.min(i,8)*40}ms">
+        <span class="rank">${r.rank}</span>
+        <span class="who">${escapeHtml(r.name)}</span>
+        <span class="wins">${r.wins}</span>
+      </li>`;
+    }).join('');
+    if($('ratingHint')){
+      $('ratingHint').textContent = currentUser
+        ? `Ты: ${currentUser.name} · ${currentUser.wins||0} побед · ${currentUser.games||0} партий`
+        : 'Войди по email — победы в играх попадут в рейтинг.';
+    }
+  }catch(_){
+    if($('ratingHint')) $('ratingHint').textContent = 'Рейтинг временно недоступен.';
+  }
+}
+
+if($('btnAuthClose')) $('btnAuthClose').onclick = closeAuthModal;
+if($('btnAuthSend')) $('btnAuthSend').onclick = sendAuthLink;
+if($('btnLogin')) $('btnLogin').onclick = openAuthModal;
+if($('authModal')){
+  $('authModal').addEventListener('click', (e)=>{
+    if(e.target === $('authModal')) closeAuthModal();
+  });
+}
+
+(async function bootAuth(){
+  try{
+    const u = new URL(location.href);
+    const authTok = (u.searchParams.get('auth') || '').trim().toLowerCase();
+    if(authTok){
+      await verifyAuthToken(authTok);
+    }else{
+      await refreshMe();
+    }
+  }catch(_){
+    try{ await refreshMe(); }catch(__){}
+  }
+  loadRating();
+})();
 
 let roomMisses = 0;
 
