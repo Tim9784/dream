@@ -655,6 +655,8 @@ function applyState(s, opts={}){
     show('done');
     setWinChance(s);
     trackGameFinished(s);
+    refreshMe();
+    loadRating();
     startPoll(); // чтобы увидеть рематч от друзей
     const voted = !!(s.you && s.rematch_votes && s.rematch_votes[s.you]);
     const rematchBtn = $('btnReplay');
