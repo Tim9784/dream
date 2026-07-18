@@ -1845,11 +1845,12 @@ async function startGame({vsAi=false, vsLocalMode=false}={}){
     });
     SB.placed=[]; SB.selected=null; picked=null; bgSel={from:null,die:null,dieIdx:null};
     lastPlaySig = '';
+    stateRev = 0;
     lastFinishedSig = '';
     clearShareHint(true);
     const mode = vsLocalMode ? 'local' : (vsAi ? 'ai' : 'pvp');
     trackGameUtm(chosenGame, mode);
-    applyState(data.state); startPoll();
+    applyState(data.state, {force:true}); startPoll();
   }catch(e){ if(errEl) errEl.textContent=e.message; }
 }
 
