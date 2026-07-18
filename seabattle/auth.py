@@ -253,7 +253,15 @@ def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:
     email = normalize_email(email_raw)
     if not email:
         return {"ok": False, "error": "Укажи корректный email"}
-    name = normalize_display_name(name_raw)
+    # пустое имя при повторном входе — берём уже сохранённое в аккаунте
+    raw_name = str(name_raw or "").strip()
+    existing = get_user_by_email(email) if not raw_name else None
+    if raw_name:
+        name = normalize_display_name(raw_name)
+    elif existing and existing.get("name"):
+        name = normalize_display_name(existing["name"])
+    else:
+        name = normalize_display_name(raw_name)
     token = create_magic_link(email, name)
     link = magic_login_url(token)
     text_body, html_body = build_login_email(name, link)
@@ -294,6 +302,7 @@ def get_user_by_email(email: str) -> Optional[dict[str, Any]]:
 
 def upsert_user(email: str, name: str) -> dict[str, Any]:
     ensure_schema()
+    name = normalize_display_name(name)
     with connect() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -302,11 +311,14 @@ def upsert_user(email: str, name: str) -> dict[str, Any]:
             )
             row = cur.fetchone()
             if row:
-                cur.execute(
-                    "UPDATE `omove_users` SET `name`=%s WHERE `id`=%s",
-                    (name, int(row["id"])),
-                )
-                row["name"] = name
+                old = str(row.get("name") or "").strip()
+                # не затираем выбранное имя дефолтом «Игрок» при повторном входе
+                if name and name != "Игрок" and name != old:
+                    cur.execute(
+                        "UPDATE `omove_users` SET `name`=%s WHERE `id`=%s",
+                        (name, int(row["id"])),
+                    )
+                    row["name"] = name
                 return public_user(row)
             cur.execute(
                 "INSERT INTO `omove_users` (`email`, `name`) VALUES (%s, %s)",

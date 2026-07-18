@@ -191,6 +191,8 @@ function openSetup(gameId){
   }
   $('setupErr').textContent = '';
   setLocalNamesVisible(false);
+  if(currentUser && currentUser.name) applyAccountNameToForm();
+  else fillDefaultNames();
   show('setup');
   trackGameUtm(chosenGame, 'select');
 }
@@ -278,7 +280,18 @@ function openAuthModal(){
   if(!m) return;
   $('authErr').textContent = '';
   $('authHint').textContent = '';
-  if(currentUser && $('authName')) $('authName').value = currentUser.name || '';
+  if($('authName')){
+    if(currentUser && currentUser.name){
+      $('authName').value = currentUser.name;
+    }else{
+      // только явно введённое в сетапе имя — не случайный nickname
+      const n = $('name');
+      const fromSetup = (n && n.value || '').trim();
+      if(fromSetup && n.dataset.fromUser === '1' && !$('authName').value.trim()){
+        $('authName').value = fromSetup;
+      }
+    }
+  }
   m.classList.remove('hidden');
   m.setAttribute('aria-hidden', 'false');
   if($('authEmail')) $('authEmail').focus();
@@ -416,7 +429,7 @@ if($('authModal')){
   });
 }
 
-(async function bootAuth(){
+let authReady = (async function bootAuth(){
   try{
     const u = new URL(location.href);
     const authTok = (u.searchParams.get('auth') || '').trim().toLowerCase();
@@ -440,6 +453,7 @@ if($('authModal')){
   }catch(_){
     try{ await refreshMe(); }catch(__){}
   }
+  fillDefaultNames();
   loadRating();
 })();
 
@@ -463,7 +477,10 @@ function startPoll(){
           // пробуем один раз переподключиться по токену, не очищая сессию заранее
           try{
             const saved = LS.get();
-            const joinName = (saved && saved.name) || ($('name') && $('name').value) || randomAnimal();
+            const joinName = (currentUser && currentUser.name)
+              || (saved && saved.name)
+              || ($('name') && $('name').value)
+              || randomAnimal();
             const data = await api('/api/room/join', {
               method:'POST',
               body: JSON.stringify({ name: joinName, code, token })
@@ -483,9 +500,10 @@ function startPoll(){
 function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
 
 function playerName(el){
+  // в аккаунте всегда играем под выбранным именем, даже если в поле ещё random из LS
+  if(currentUser && currentUser.name) return String(currentUser.name).slice(0, 20);
   const v = (el && el.value || '').trim();
   if(v) return v;
-  if(currentUser && currentUser.name) return String(currentUser.name).slice(0, 20);
   return randomAnimal();
 }
 
@@ -508,6 +526,15 @@ function fillDefaultNames(){
   if(n2 && (!n2.value.trim() || /^Игрок\s*\d*$/i.test(n2.value.trim()))){
     n2.value = randomAnimal(n1 && n1.value.trim());
   }
+}
+
+// ручной ввод в сетапе помечаем, чтобы можно было перенести в форму входа
+if($('name')){
+  $('name').addEventListener('input', ()=>{
+    const v = ($('name').value || '').trim();
+    if(v) $('name').dataset.fromUser = '1';
+    else delete $('name').dataset.fromUser;
+  });
 }
 
 function needsPrivacy(game){
@@ -2046,10 +2073,15 @@ async function shareInvite(){
 if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
 
 (async function boot(){
+  // ждём аккаунт: иначе старый random из LS перетирает выбранное имя
+  try{ await authReady; }catch(_){}
+
+  const accountName = () => (currentUser && currentUser.name) ? String(currentUser.name).slice(0,20) : '';
+
   const pendingJoin = readJoinCodeFromUrl();
   if(pendingJoin){
     const prev = LS.get();
-    const joinName = ((prev && prev.name) || ($('name') && $('name').value.trim()) || randomAnimal()).slice(0,20);
+    const joinName = (accountName() || (prev && prev.name) || ($('name') && $('name').value.trim()) || randomAnimal()).slice(0,20);
     LS.clear();
     token=null; code=null; state=null;
     tokens={p1:null,p2:null}; vsLocal=false;
@@ -2065,26 +2097,35 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   }
 
   const saved=LS.get();
-  if(!saved||!saved.code) return;
+  if(!saved||!saved.code){
+    fillDefaultNames();
+    return;
+  }
   if(saved.vs_local && saved.tokens && saved.tokens.p1 && saved.tokens.p2){
     tokens = saved.tokens;
     vsLocal = true;
     token = saved.token || tokens.p1;
     code = saved.code;
     hotseatSlot = null;
-    if(saved.name && $('name')) $('name').value=saved.name;
+    if($('name')) $('name').value = accountName() || saved.name || $('name').value;
     if(saved.name2 && $('name2')) $('name2').value=saved.name2;
     try{
       const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
       if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
       stateRev = 0;
       applyState(data.state, {force:true}); startPoll();
-    }catch{ LS.clear(); }
+    }catch{
+      LS.clear();
+      fillDefaultNames();
+    }
     return;
   }
-  if(!saved.token) return;
+  if(!saved.token){
+    fillDefaultNames();
+    return;
+  }
   token=saved.token; code=saved.code;
-  if(saved.name && $('name')) $('name').value=saved.name;
+  if($('name')) $('name').value = accountName() || saved.name || $('name').value;
   try{
     const data=await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
     if(data.state && data.state.game) trackGameUtm(data.state.game, 'resume');
@@ -2093,13 +2134,14 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
   }catch(e){
     // комната могла кратко не прочитаться — пробуем явный rejoin по токену
     try{
-      await joinRoomByCode(saved.code, saved.name || playerName($('name')));
+      await joinRoomByCode(saved.code, accountName() || saved.name || playerName($('name')));
     }catch(_){
       // устаревшая сессия — тихо сбрасываем, без ошибки на главной
       LS.clear();
       token = null;
       code = null;
       state = null;
+      fillDefaultNames();
     }
   }
 })();
