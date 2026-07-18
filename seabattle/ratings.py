@@ -29,6 +29,11 @@ def winner_slots(room: dict[str, Any]) -> list[str]:
     return []
 
 
+def _safe_game_id(room: dict[str, Any]) -> str:
+    game = str(room.get("game") or "").strip().lower()[:32]
+    return game or "unknown"
+
+
 def record_match_result(room: dict[str, Any]) -> None:
     """Учитывает победы/партии для авторизованных игроков.
 
@@ -61,6 +66,7 @@ def record_match_result(room: dict[str, Any]) -> None:
     if not touched:
         return
 
+    game_id = _safe_game_id(room)
     ensure_schema()
     with connect() as conn:
         with conn.cursor() as cur:
@@ -83,6 +89,49 @@ def record_match_result(room: dict[str, Any]) -> None:
                         """,
                         (uid,),
                     )
+                cur.execute(
+                    """
+                    INSERT INTO `omove_user_game_stats` (`user_id`, `game`, `wins`, `games`)
+                    VALUES (%s, %s, %s, 1)
+                    ON DUPLICATE KEY UPDATE
+                      `wins` = `wins` + VALUES(`wins`),
+                      `games` = `games` + 1
+                    """,
+                    (uid, game_id, 1 if is_win else 0),
+                )
+
+
+def user_game_stats(user_id: int) -> list[dict[str, Any]]:
+    """Статистика по играм для профиля."""
+    ensure_schema()
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return []
+    if uid <= 0:
+        return []
+    with connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT `game`, `wins`, `games`
+                FROM `omove_user_game_stats`
+                WHERE `user_id`=%s AND `games` > 0
+                ORDER BY `games` DESC, `wins` DESC, `game` ASC
+                """,
+                (uid,),
+            )
+            rows = cur.fetchall() or []
+    out = []
+    for row in rows:
+        out.append(
+            {
+                "game": str(row["game"]),
+                "wins": int(row.get("wins") or 0),
+                "games": int(row.get("games") or 0),
+            }
+        )
+    return out
 
 
 def leaderboard(limit: int = 20) -> list[dict[str, Any]]:

@@ -18,6 +18,7 @@ from games import GAMES, get_game
 from memory_store import FileStore, MemoryStore, MySQLStore
 from ratings import leaderboard as rating_leaderboard
 from ratings import maybe_record_finished
+from ratings import user_game_stats as rating_user_game_stats
 from stats import snapshot as stats_snapshot
 from stats import track_finished, track_join, track_room_created, track_visit
 
@@ -569,6 +570,57 @@ def list_games():
 @app.get("/api/me")
 def api_me():
     return jsonify({"ok": True, "user": current_user()})
+
+
+@app.get("/api/profile")
+def api_profile():
+    """Профиль текущего пользователя: общие и поигровые счётчики."""
+    user = current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Нужно войти"}), 401
+    try:
+        by_game = rating_user_game_stats(int(user["id"]))
+    except Exception:
+        by_game = []
+    # подписи и порядок известных игр
+    known = []
+    seen = set()
+    for gid, meta in GAMES.items():
+        if meta.get("hidden"):
+            continue
+        seen.add(gid)
+        row = next((x for x in by_game if x.get("game") == gid), None)
+        known.append(
+            {
+                "game": gid,
+                "title": meta.get("title") or gid,
+                "wins": int((row or {}).get("wins") or 0),
+                "games": int((row or {}).get("games") or 0),
+            }
+        )
+    for row in by_game:
+        gid = str(row.get("game") or "")
+        if not gid or gid in seen:
+            continue
+        known.append(
+            {
+                "game": gid,
+                "title": gid,
+                "wins": int(row.get("wins") or 0),
+                "games": int(row.get("games") or 0),
+            }
+        )
+    return jsonify(
+        {
+            "ok": True,
+            "user": user,
+            "by_game": known,
+            "totals": {
+                "wins": int(user.get("wins") or 0),
+                "games": int(user.get("games") or 0),
+            },
+        }
+    )
 
 
 @app.post("/api/auth/request-link")

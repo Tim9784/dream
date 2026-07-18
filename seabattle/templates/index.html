@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260718q">
+<link rel="stylesheet" href="/static/style.css?v=20260718r">
 <script>
 (function(){
   try{
@@ -82,6 +82,25 @@
     <ol class="rating-list" id="ratingList"></ol>
     <p class="hint" id="ratingHint">Войди по email — победы в играх попадут в рейтинг.</p>
   </section>
+
+  <div id="profileModal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card profile-card" role="dialog" aria-labelledby="profileTitle" aria-modal="true">
+      <div class="topbar">
+        <strong id="profileTitle">Профиль</strong>
+        <button type="button" class="btn danger" id="btnProfileClose">Закрыть</button>
+      </div>
+      <div class="profile-head">
+        <div class="profile-who">
+          <strong id="profileName">Игрок</strong>
+          <small id="profileEmail"></small>
+        </div>
+        <div class="profile-totals" id="profileTotals"></div>
+      </div>
+      <h3 class="profile-sub">По играм</h3>
+      <ul class="profile-games" id="profileGames"></ul>
+      <p class="hint" style="text-align:left;margin-top:12px">Считаются партии по сети и с роботом (не «вдвоём здесь»).</p>
+    </div>
+  </div>
 
   <div id="logoutModal" class="modal hidden" aria-hidden="true">
     <div class="modal-card confirm-card" role="dialog" aria-labelledby="logoutTitle" aria-modal="true">

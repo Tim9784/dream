@@ -785,8 +785,56 @@ html[data-theme="light"] .bar-col .bar{background:linear-gradient(180deg,#52525b
   padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--chip);
   min-width:0;max-width:none;
 }
+.account-chip-btn{
+  width:100%;font:inherit;color:inherit;cursor:pointer;
+  transition:border-color .15s ease, background .15s ease, transform .15s ease;
+}
+.account-chip-btn:hover{
+  border-color:var(--accent);background:var(--card-hover);transform:translateY(-1px);
+}
 .account-chip strong{font-size:.95rem;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .account-chip small{color:var(--soft);font-size:.78rem}
+.profile-card{width:min(440px,100%)}
+.profile-head{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.profile-who{display:flex;flex-direction:column;gap:2px;min-width:0}
+.profile-who strong{font-size:1.2rem;letter-spacing:-.01em}
+.profile-who small{color:var(--soft);font-size:.85rem;overflow:hidden;text-overflow:ellipsis}
+.profile-totals{
+  display:flex;flex-wrap:wrap;gap:10px 16px;
+  padding:12px 14px;border-radius:14px;border:1px solid var(--line);
+  background:var(--chip);
+}
+.profile-totals span{color:var(--soft);font-size:.92rem}
+.profile-totals b{color:var(--text);font-weight:700;margin-right:4px}
+.profile-sub{margin:18px 0 8px;font-size:.95rem;font-weight:700;letter-spacing:-.01em}
+.profile-games{
+  list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;
+  max-height:min(48vh,360px);overflow:auto;
+}
+.profile-game{
+  display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:var(--chip);
+}
+.profile-game-mark{
+  width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  color:var(--foam);background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.03));
+  border:1px solid rgba(255,255,255,.12);
+}
+.profile-game-mark svg{width:22px;height:22px;display:block}
+html[data-theme="light"] .profile-game-mark{
+  background:linear-gradient(145deg,rgba(0,0,0,.06),rgba(0,0,0,.02));
+  border-color:rgba(0,0,0,.1);
+}
+.profile-game-body{min-width:0}
+.profile-game-body strong{display:block;font-size:.98rem}
+.profile-game-body small{color:var(--soft);font-size:.8rem}
+.profile-game-wins{
+  font-weight:700;font-variant-numeric:tabular-nums;color:var(--foam);font-size:1.05rem;
+}
+.profile-empty{
+  padding:14px;border-radius:14px;border:1px dashed var(--line);
+  color:var(--soft);font-size:.9rem;line-height:1.45;
+}
 .soft-hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 .rating-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .rating-list{

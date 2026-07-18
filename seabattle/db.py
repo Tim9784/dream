@@ -7,7 +7,8 @@ import threading
 from typing import Any, Optional
 
 _lock = threading.Lock()
-_schema_ready = False
+_SCHEMA_VERSION = 2
+_schema_ready_version = 0
 
 
 def load_config() -> dict[str, Any]:
@@ -52,11 +53,11 @@ def connect(cfg: Optional[dict[str, Any]] = None):
 
 
 def ensure_schema(cfg: Optional[dict[str, Any]] = None) -> None:
-    global _schema_ready
-    if _schema_ready:
+    global _schema_ready_version
+    if _schema_ready_version >= _SCHEMA_VERSION:
         return
     with _lock:
-        if _schema_ready:
+        if _schema_ready_version >= _SCHEMA_VERSION:
             return
         with connect(cfg) as conn:
             with conn.cursor() as cur:
@@ -103,4 +104,18 @@ def ensure_schema(cfg: Optional[dict[str, Any]] = None) -> None:
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                     """
                 )
-        _schema_ready = True
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS `omove_user_game_stats` (
+                      `user_id` INT NOT NULL,
+                      `game` VARCHAR(32) NOT NULL,
+                      `wins` INT NOT NULL DEFAULT 0,
+                      `games` INT NOT NULL DEFAULT 0,
+                      `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        ON UPDATE CURRENT_TIMESTAMP,
+                      PRIMARY KEY (`user_id`, `game`),
+                      KEY `idx_game` (`game`)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """
+                )
+        _schema_ready_version = _SCHEMA_VERSION
