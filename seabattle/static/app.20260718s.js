@@ -272,6 +272,8 @@ function renderAccount(){
     if(btn) btn.onclick = openAuthModal;
     if($('name')) delete $('name').dataset.fromUser;
   }
+  // если на экране конца партии — обновить подсказку про рейтинг
+  if(state && state.phase==='done') updateDoneAuthHint(state);
 }
 
 function closeProfileModal(){
