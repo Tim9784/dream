@@ -11,7 +11,7 @@ import tempfile
 import time
 from typing import Any
 
-from flask import Flask, g, jsonify, make_response, render_template, request
+from flask import Flask, g, jsonify, make_response, redirect, render_template, request
 
 import auth as auth_mod
 from games import GAMES, get_game
@@ -589,11 +589,14 @@ def api_auth_request_link():
         return jsonify({"ok": False, "error": "Не удалось отправить письмо. Попробуй позже."}), 502
     if not result.get("ok"):
         return jsonify(result), 400
-    return jsonify({
+    payload = {
         "ok": True,
         "email": result.get("email"),
         "message": "Ссылка для входа отправлена на email",
-    })
+    }
+    if result.get("hint"):
+        payload["hint"] = result["hint"]
+    return jsonify(payload)
 
 
 @app.post("/api/auth/verify")
@@ -604,7 +607,7 @@ def api_auth_verify():
     data = read_json()
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
-    token = str(data.get("token") or "").strip().lower()
+    token = auth_mod.normalize_magic_token(data.get("token"))
     try:
         result = auth_mod.consume_magic_token(token)
     except Exception:
@@ -612,6 +615,22 @@ def api_auth_verify():
     if not result:
         return jsonify({"ok": False, "error": "Ссылка недействительна или устарела"}), 400
     resp = make_response(jsonify({"ok": True, "user": result["user"]}))
+    return set_session_cookie(resp, result["session"])
+
+
+@app.get("/a/<token>")
+def auth_click_link(token: str):
+    """Клик по ссылке из письма: ставит сессию и открывает главную."""
+    ip = g.client_ip
+    if not rate_limit(f"authv:{ip}", 20, 60):
+        return too_many()
+    try:
+        result = auth_mod.consume_magic_token(token)
+    except Exception:
+        return redirect("/?auth_err=1")
+    if not result:
+        return redirect("/?auth_err=1")
+    resp = make_response(redirect("/?auth_ok=1", code=302))
     return set_session_cookie(resp, result["session"])
 
 

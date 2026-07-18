@@ -303,7 +303,9 @@ async function sendAuthLink(){
       method: 'POST',
       body: JSON.stringify({email, name}),
     });
-    $('authHint').textContent = `Письмо отправлено на ${data.email || email}. Открой ссылку из письма, чтобы войти.`;
+    let msg = `Письмо отправлено на ${data.email || email}. Открой кнопку или ссылку из письма (она короткая: omove.ru/a/…).`;
+    if(data.hint) msg += ' ' + data.hint;
+    $('authHint').textContent = msg;
   }catch(e){
     $('authErr').textContent = e.message || 'Не удалось отправить';
   }
@@ -376,10 +378,22 @@ if($('authModal')){
   try{
     const u = new URL(location.href);
     const authTok = (u.searchParams.get('auth') || '').trim().toLowerCase();
+    const authOk = u.searchParams.get('auth_ok') === '1';
+    const authErr = u.searchParams.get('auth_err') === '1';
     if(authTok){
       await verifyAuthToken(authTok);
     }else{
       await refreshMe();
+      if(authOk && currentUser && $('homeErr')){
+        $('homeErr').textContent = `Вы вошли как ${currentUser.name}. Победы будут в рейтинге.`;
+      }else if(authErr && $('homeErr')){
+        $('homeErr').textContent = 'Ссылка для входа недействительна или устарела. Запроси новую.';
+      }
+      if(authOk || authErr){
+        u.searchParams.delete('auth_ok');
+        u.searchParams.delete('auth_err');
+        history.replaceState(history.state || {}, '', u.pathname + u.search + u.hash);
+      }
     }
   }catch(_){
     try{ await refreshMe(); }catch(__){}

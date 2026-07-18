@@ -7,6 +7,7 @@ import secrets
 import smtplib
 import subprocess
 import time
+from email import charset as charset_mod
 from email.header import Header
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -17,9 +18,14 @@ from db import connect, ensure_schema, load_config
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 SAFE_NAME_RE = re.compile(r"[\x00-\x1f\x7f<>{}[\]\\\"`]")
+# короткий токен: не ломается переносами в почтовых клиентах
+TOKEN_RE = re.compile(r"^[0-9a-f]{16,64}$")
 MAGIC_TTL = 30 * 60
 SESSION_TTL = 60 * 60 * 24 * 30
 SESSION_COOKIE = "omove_sid"
+
+# не рвём URL quoted-printable переносами
+charset_mod.add_charset("utf-8", charset_mod.BASE64, charset_mod.BASE64, "utf-8")
 
 
 def normalize_email(raw: Any) -> str:
@@ -32,6 +38,13 @@ def normalize_email(raw: Any) -> str:
 def normalize_display_name(raw: Any, fallback: str = "Игрок") -> str:
     name = SAFE_NAME_RE.sub("", str(raw or "").strip())[:20].strip()
     return name or fallback
+
+
+def normalize_magic_token(raw: Any) -> str:
+    token = str(raw or "").strip().lower()
+    if not TOKEN_RE.match(token):
+        return ""
+    return token
 
 
 def public_user(row: dict[str, Any]) -> dict[str, Any]:
@@ -65,44 +78,61 @@ def mail_from_parts() -> tuple[str, str]:
 def build_login_email(name: str, link: str) -> tuple[str, str]:
     """Возвращает (text_body, html_body)."""
     safe_name = name.strip() or "Игрок"
+    # короткая ссылка целиком на одной строке — её легко скопировать
     text = (
-        "Привет!\n\n"
-        f"Чтобы войти на Omove.ru как {safe_name}, открой эту ссылку:\n\n"
-        f"{link}\n\n"
-        "Ссылка действует 30 минут.\n"
-        "Если ты не запрашивал вход — просто игнорируй письмо.\n"
+        "Omove.ru — вход\n"
+        "\n"
+        f"Привет, {safe_name}!\n"
+        "\n"
+        "Открой ссылку для входа (действует 30 минут):\n"
+        f"{link}\n"
+        "\n"
+        "Если ты не запрашивал вход — просто удали письмо.\n"
     )
     href = html.escape(link, quote=True)
     name_html = html.escape(safe_name)
+    # «Bulletproof»-кнопка таблицей — кликабельна в Yandex/Mail.ru/Outlook
     html_body = f"""<!DOCTYPE html>
 <html lang="ru">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0b1724;color:#e8f1f8;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0b1724;padding:24px 12px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#102033;border:1px solid #27445f;border-radius:16px;padding:28px 24px;">
-        <tr><td style="font-size:28px;font-weight:700;color:#7dd3fc;padding-bottom:8px;">Omove.ru</td></tr>
-        <tr><td style="font-size:16px;line-height:1.5;color:#e8f1f8;padding-bottom:8px;">Привет!</td></tr>
-        <tr><td style="font-size:16px;line-height:1.5;color:#c5d7e6;padding-bottom:22px;">
-          Чтобы войти на сайт как <strong style="color:#e8f1f8;">{name_html}</strong>, нажми кнопку ниже.
-        </td></tr>
-        <tr><td align="center" style="padding-bottom:22px;">
-          <a href="{href}"
-             style="display:inline-block;background:#38bdf8;color:#042029;text-decoration:none;font-weight:700;font-size:16px;padding:14px 28px;border-radius:12px;">
-            Войти на Omove.ru
-          </a>
-        </td></tr>
-        <tr><td style="font-size:13px;line-height:1.5;color:#9db4c6;padding-bottom:8px;">
-          Кнопка не открывается? Скопируй ссылку в браузер:
-        </td></tr>
-        <tr><td style="font-size:13px;line-height:1.5;word-break:break-all;">
-          <a href="{href}" style="color:#7dd3fc;">{href}</a>
-        </td></tr>
-        <tr><td style="font-size:12px;line-height:1.5;color:#6f8799;padding-top:18px;">
-          Ссылка действует 30 минут. Если ты не запрашивал вход — просто игнорируй письмо.
-        </td></tr>
-      </table>
-    </td></tr>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход на Omove.ru</title>
+</head>
+<body style="margin:0;padding:0;background:#0b1724;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1724;">
+    <tr>
+      <td align="center" style="padding:28px 12px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:480px;background:#102033;border:1px solid #27445f;">
+          <tr>
+            <td style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8f1f8;">
+              <div style="font-size:26px;font-weight:700;color:#7dd3fc;margin:0 0 16px 0;">Omove.ru</div>
+              <div style="font-size:16px;line-height:1.5;margin:0 0 8px 0;">Привет, {name_html}!</div>
+              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
+                Нажми кнопку, чтобы войти на сайт. Ссылка действует 30 минут.
+              </div>
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 22px auto;">
+                <tr>
+                  <td align="center" bgcolor="#38bdf8" style="border-radius:10px;">
+                    <a href="{href}" target="_blank"
+                       style="display:inline-block;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#042029;text-decoration:none;border-radius:10px;">
+                      Войти на Omove.ru
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 6px 0;">Или открой ссылку:</div>
+              <div style="font-size:14px;line-height:1.5;margin:0;">
+                <a href="{href}" target="_blank" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
+              </div>
+              <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:20px 0 0 0;">
+                Если ты не запрашивал вход — просто удали письмо.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
   </table>
 </body>
 </html>"""
@@ -140,6 +170,7 @@ def _send_via_smtp(from_email: str, to_addr: str, raw_message: bytes) -> None:
 
 
 def _send_via_sendmail(from_email: str, to_addr: str, raw_message: bytes) -> None:
+    # -t читает получателей из заголовков; -i не останавливается на строке "."
     proc = subprocess.run(
         ["/usr/sbin/sendmail", "-i", "-t", "-f", from_email or "noreply@omove.ru"],
         input=raw_message,
@@ -168,20 +199,18 @@ def send_email(to_addr: str, subject: str, text_body: str, html_body: str | None
 
     msg["From"] = from_header
     msg["To"] = to_addr
-    msg["Subject"] = Header(subject, "utf-8")
+    msg["Subject"] = str(Header(subject, "utf-8"))
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain="omove.ru")
-    msg["MIME-Version"] = "1.0"
     msg["Reply-To"] = from_email
-    msg["X-Mailer"] = "Omove.ru"
-    msg["List-Unsubscribe"] = f"<mailto:{from_email}?subject=unsubscribe>"
-    # помогает части клиентов не резать длинные URL
-    msg["Content-Language"] = "ru"
+    msg["X-Mailer"] = "Omove.ru Auth"
+    msg["Auto-Submitted"] = "auto-generated"
+    msg["X-Auto-Response-Suppress"] = "All"
 
     raw = msg.as_bytes()
     cfg = load_config()
     smtp_cfg = cfg.get("smtp") if isinstance(cfg.get("smtp"), dict) else {}
-    if smtp_cfg.get("host"):
+    if smtp_cfg.get("host") and smtp_cfg.get("user"):
         _send_via_smtp(from_email, to_addr, raw)
     else:
         _send_via_sendmail(from_email, to_addr, raw)
@@ -189,7 +218,8 @@ def send_email(to_addr: str, subject: str, text_body: str, html_body: str | None
 
 def create_magic_link(email: str, name: str) -> str:
     ensure_schema()
-    token = secrets.token_hex(32)
+    # 16 hex-символов (~https://omove.ru/a/0123456789abcdef) — целиком копируется
+    token = secrets.token_hex(8)
     exp = time.time() + MAGIC_TTL
     with connect() as conn:
         with conn.cursor() as cur:
@@ -204,16 +234,27 @@ def create_magic_link(email: str, name: str) -> str:
     return token
 
 
+def magic_login_url(token: str) -> str:
+    return f"{site_base_url()}/a/{token}"
+
+
 def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:
     email = normalize_email(email_raw)
     if not email:
         return {"ok": False, "error": "Укажи корректный email"}
     name = normalize_display_name(name_raw)
     token = create_magic_link(email, name)
-    link = f"{site_base_url()}/?auth={token}"
+    link = magic_login_url(token)
     text_body, html_body = build_login_email(name, link)
     send_email(email, "Вход на Omove.ru", text_body, html_body)
-    return {"ok": True, "email": email}
+    out = {"ok": True, "email": email}
+    # для Gmail без SPF письма часто не доходят — подсказка в UI
+    if email.endswith("@gmail.com") or email.endswith("@googlemail.com"):
+        out["hint"] = (
+            "Письма на Gmail могут не доходить, пока для omove.ru в DNS нет SPF. "
+            "Проверь «Спам» или используй другой email (Яндекс/Mail.ru)."
+        )
+    return out
 
 
 def get_user_by_id(user_id: int) -> Optional[dict[str, Any]]:
@@ -317,7 +358,8 @@ def delete_session(token: str) -> None:
 
 
 def consume_magic_token(token: str) -> Optional[dict[str, Any]]:
-    if not token or len(token) != 64:
+    token = normalize_magic_token(token)
+    if not token:
         return None
     ensure_schema()
     now = time.time()
