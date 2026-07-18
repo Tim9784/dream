@@ -4,6 +4,13 @@
   "site_title": "Omove.ru",
   "site_url": "https://omove.ru",
   "mail_from": "Omove.ru <noreply@omove.ru>",
+  "smtp": {
+    "host": "",
+    "port": 587,
+    "user": "",
+    "password": "",
+    "tls": true
+  },
   "mysql": {
     "host": "u549672.mysql.masterhost.ru",
     "port": 3306,
