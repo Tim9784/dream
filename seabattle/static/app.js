@@ -149,6 +149,7 @@ let bgSel = {from:null, die:null};
 // не пересобирать UI на каждом poll, если состояние не изменилось
 let lastPlaySig = '';
 let stateRev = 0;
+let rematchBusy = false;
 
 function playStateSig(s){
   if(!s) return '';
@@ -1967,7 +1968,6 @@ if($('btnStartGame')) $('btnStartGame').onclick = async ()=>{
 
 $('joinCode').addEventListener('input', e=>{ e.target.value=e.target.value.replace(/\D/g,'').slice(0,6); });
 $('btnAgain').onclick=()=>goHome();
-let rematchBusy = false;
 $('btnReplay').onclick = async ()=>{
   if(rematchBusy) return;
   rematchBusy = true;
