@@ -680,7 +680,16 @@ function applyState(s, opts={}){
   const rev = Number(s.rev) || 0;
   // устаревший poll не должен откатывать доску после хода
   if(!opts.force && rev && stateRev && rev < stateRev) return;
-  if(!opts.force && state && s.game==='tictactoe' && boardFilledCount(s) < boardFilledCount(state) && (s.phase==='playing'||s.phase==='placing')){
+  // защита только внутри текущей партии — после done/рематча пустая доска законна
+  if(
+    !opts.force &&
+    state &&
+    state.phase !== 'done' &&
+    s.phase !== 'done' &&
+    s.game==='tictactoe' &&
+    (s.phase==='playing'||s.phase==='placing') &&
+    boardFilledCount(s) < boardFilledCount(state)
+  ){
     return;
   }
   if(rev) stateRev = rev;
@@ -1973,38 +1982,38 @@ $('btnReplay').onclick = async ()=>{
   rematchBusy = true;
   const rematchBtn = $('btnReplay');
   if(rematchBtn) rematchBtn.disabled = true;
+  if($('doneStatus') && /не окончена/i.test($('doneStatus').textContent||'')){
+    $('doneStatus').textContent = 'Запускаем новую партию…';
+  }
   try{
     // та же комната: рематч с теми же людьми / роботом
-    if(state && code && token && state.phase==='done'){
+    if(state && code && token){
       try{
         const data = await api(`/api/room/${code}/rematch`, {
           method:'POST', body:JSON.stringify({token})
         });
         if(data.state){
           lastPlaySig = '';
+          stateRev = 0;
           applyState(data.state, {force:true});
           startPoll();
           return;
         }
       }catch(e){
-        const msg = String(e.message||'');
-        // комната могла уже уйти с экрана done (гонка/повторный клик) — подтянем состояние
+        // комната могла уже уйти с экрана done — подтянем состояние без показа ошибки
         try{
           const cur = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
-          if(cur.state){
+          if(cur.state && cur.state.phase !== 'done'){
             lastPlaySig = '';
+            stateRev = 0;
             applyState(cur.state, {force:true});
             startPoll();
-            if(cur.state.phase !== 'done') return;
+            return;
           }
         }catch(_){}
-        // комната умерла — создадим новую ниже; прочие ошибки не блокируем навечно
-        if(!/не найдена/i.test(msg) && !/не окончена/i.test(msg) && !/ещё не/i.test(msg)){
-          if($('doneStatus')) $('doneStatus').textContent = msg;
-          return;
-        }
       }
     }
+    // запасной путь: новая комната с теми же настройками
     chosenGame = lastSettings.game || chosenGame;
     chosenBoard = lastSettings.size || chosenBoard;
     chosenPlayers = lastSettings.players || chosenPlayers;
@@ -2022,7 +2031,6 @@ $('btnReplay').onclick = async ()=>{
     }
   }finally{
     rematchBusy = false;
-    // кнопку вернёт applyState; если остались на done — разблокируем
     if(rematchBtn && state && state.phase==='done' && !state.vs_ai && !state.vs_local){
       const voted = !!(state.you && state.rematch_votes && state.rematch_votes[state.you]);
       rematchBtn.disabled = !!voted;
