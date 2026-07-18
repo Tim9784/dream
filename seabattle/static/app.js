@@ -468,7 +468,10 @@ function startPoll(){
     try{
       const data = await api(`/api/room/${code}?token=${encodeURIComponent(token)}`);
       roomMisses = 0;
-      applyState(data.state);
+      // после рематча фаза уходит с done — нельзя отфильтровать как «откат доски»
+      const fromDone = !!(state && state.phase==='done' && data.state && data.state.phase!=='done');
+      applyState(data.state, fromDone ? {force:true} : {});
+      if(fromDone) lastPlaySig = '';
     }catch(e){
       const msg = String(e.message||'');
       if(msg.includes('не найдена') || msg.includes('Не найдена')){
