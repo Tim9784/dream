@@ -60,8 +60,8 @@ def public_user(row: dict[str, Any]) -> dict[str, Any]:
 def site_base_url() -> str:
     cfg = load_config()
     # По умолчанию http: на omove.ru HTTPS сейчас часто недоступен (SSL не подключён).
-    url = str(cfg.get("site_url") or "http://omove.ru").strip().rstrip("/")
-    return url or "http://omove.ru"
+    url = str(cfg.get("site_url") or "https://omove.ru").strip().rstrip("/")
+    return url or "https://omove.ru"
 
 
 def mail_from_parts() -> tuple[str, str]:
