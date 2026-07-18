@@ -1999,9 +1999,11 @@ if($('btnShare')) $('btnShare').onclick = ()=>{ shareInvite(); };
     try{
       await joinRoomByCode(saved.code, saved.name || playerName($('name')));
     }catch(_){
-      // сессию оставляем: пользователь может нажать «Войти» с тем же кодом
-      if($('joinCode')) $('joinCode').value = saved.code || '';
-      if($('homeErr')) $('homeErr').textContent = 'Не удалось восстановить партию. Нажми игру → Войти с тем же кодом.';
+      // устаревшая сессия — тихо сбрасываем, без ошибки на главной
+      LS.clear();
+      token = null;
+      code = null;
+      state = null;
     }
   }
 })();
