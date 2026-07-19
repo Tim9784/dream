@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🚀 Space Station Builder</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        body {
+            overflow: hidden;
+            background: #000;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #stats {
+            background: rgba(0, 20, 40, 0.8);
+            padding: 10px 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 200, 255, 0.3);
+            color: #0ff;
+            font-size: 14px;
+        }
+
+        #stats div {
+            margin: 5px 0;
+        }
+
+        #module-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 20, 40, 0.9);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            pointer-events: auto;
+            border-top: 2px solid rgba(0, 200, 255, 0.3);
+            z-index: 100;
+        }
+
+        .module-btn {
+            flex-shrink: 0;
+            width: 70px;
+            height: 80px;
+            background: rgba(0, 100, 150, 0.5);
+            border: 2px solid rgba(0, 200, 255, 0.5);
+            border-radius: 10px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .module-btn.selected {
+            background: rgba(0, 200, 255, 0.4);
+            border-color: #0ff;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+        }
+
+        .module-btn:active {
+            transform: scale(0.95);
+        }
+
+        .module-btn .icon {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .module-btn .name {
+            font-size: 10px;
+            text-align: center;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 110px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 12px;
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        #rotate-btns {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .rotate-btn {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 100, 150, 0.6);
+            border: 2px solid rgba(0, 200, 255, 0.5);
+            border-radius: 50%;
+            color: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .rotate-btn:active {
+            background: rgba(0, 200, 255, 0.5);
+        }
+
+        #delete-btn {
+            position: absolute;
+            left: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            background: rgba(150, 50, 50, 0.6);
+            border: 2px solid rgba(255, 100, 100, 0.5);
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 100;
+        }
+
+        #delete-btn.active {
+            background: rgba(255, 50, 50, 0.7);
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+        }
+
+        #zoom-btns {
+            position: absolute;
+            left: 10px;
+            bottom: 120px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 100;
+        }
+
+        .zoom-btn {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 100, 150, 0.6);
+            border: 2px solid rgba(0, 200, 255, 0.5);
+            border-radius: 8px;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui">
+            <div id="stats">
+                <div>🛸 Модули: <span id="module-count">0</span></div>
+                <div>⚡ Энергия: <span id="energy">0</span></div>
+                <div>👥 Экипаж: <span id="crew">0</span></div>
+            </div>
+        </div>
+
+        <div id="rotate-btns">
+            <button class="rotate-btn" id="rotate-left">↺</button>
+            <button class="rotate-btn" id="rotate-right">↻</button>
+        </div>
+
+        <button id="delete-btn">🗑</button>
+
+        <div id="zoom-btns">
+            <button class="zoom-btn" id="zoom-in">+</button>
+            <button class="zoom-btn" id="zoom-out">−</button>
+        </div>
+
+        <div id="controls-hint">
+            👆 Тап — поставить модуль | 👆👆 Двойной тап — удалить
+        </div>
+
+        <div id="module-panel">
+            <button class="module-btn selected" data-module="core">
+                <span class="icon">🔷</span>
+                <span class="name">Ядро</span>
+            </button>
+            <button class="module-btn" data-module="solar">
+                <span class="icon">☀️</span>
+                <span class="name">Солн. панель</span>
+            </button>
+            <button class="module-btn" data-module="habitat">
+                <span class="icon">🏠</span>
+                <span class="name">Жилой</span>
+            </button>
+            <button class="module-btn" data-module="lab">
+                <span class="icon">🔬</span>
+                <span class="name">Лаборатория</span>
+            </button>
+            <button class="module-btn" data-module="storage">
+                <span class="icon">📦</span>
+                <span class="name">Склад</span>
+            </button>
+            <button class="module-btn" data-module="dock">
+                <span class="icon">🚀</span>
+                <span class="name">Док</span>
+            </button>
+            <button class="module-btn" data-module="antenna">
+                <span class="icon">📡</span>
+                <span class="name">Антенна</span>
+            </button>
+            <button class="module-btn" data-module="engine">
+                <span class="icon">🔥</span>
+                <span class="name">Двигатель</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>
