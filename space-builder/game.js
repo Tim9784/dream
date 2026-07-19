@@ -64,7 +64,6 @@ class SpaceStationBuilder {
         this.createStars();
         this.createGrid();
         this.createEarth();
-        this.createModuleButtons();
         this.setupEvents();
         this.createGhostModule();
         this.animate();
@@ -753,70 +752,6 @@ class SpaceStationBuilder {
         }
     }
 
-    createModuleButtons() {
-        const panel = document.getElementById('module-panel');
-        panel.innerHTML = '';
-
-        Object.keys(this.moduleData).forEach(type => {
-            const data = this.moduleData[type];
-            
-            const btn = document.createElement('button');
-            btn.className = 'module-btn' + (type === this.selectedModule ? ' selected' : '');
-            btn.dataset.module = type;
-
-            // Create preview canvas
-            const canvas = document.createElement('canvas');
-            canvas.width = 96;
-            canvas.height = 96;
-            this.renderModulePreview(type, canvas);
-
-            const name = document.createElement('span');
-            name.className = 'name';
-            name.textContent = data.name;
-
-            btn.appendChild(canvas);
-            btn.appendChild(name);
-            panel.appendChild(btn);
-
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                this.selectedModule = type;
-                this.deleteMode = false;
-                document.getElementById('delete-btn').classList.remove('active');
-                this.updateGhostModule();
-            });
-        });
-    }
-
-    renderModulePreview(type, canvas) {
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x0a1520);
-
-        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
-        camera.position.set(3, 2.5, 3);
-        camera.lookAt(0, 0, 0);
-
-        const ambientLight = new THREE.AmbientLight(0x606080, 0.6);
-        scene.add(ambientLight);
-
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-        dirLight.position.set(3, 4, 2);
-        scene.add(dirLight);
-
-        const module = this.createModuleMesh(type, true);
-        scene.add(module);
-
-        const renderer = new THREE.WebGLRenderer({ 
-            canvas: canvas,
-            antialias: true,
-            alpha: true
-        });
-        renderer.setSize(96, 96);
-        renderer.render(scene, camera);
-        renderer.dispose();
-    }
-
     createGhostModule() {
         if (this.ghostModule) {
             this.scene.remove(this.ghostModule);
@@ -856,6 +791,19 @@ class SpaceStationBuilder {
         canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
         canvas.addEventListener('click', (e) => this.onClick(e));
         canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e));
+
+        // Module selection buttons
+        document.querySelectorAll('.module-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                this.selectedModule = btn.dataset.module;
+                this.deleteMode = false;
+                document.getElementById('delete-btn').classList.remove('active');
+                this.updateGhostModule();
+            });
+        });
 
         // Control buttons
         document.getElementById('rotate-left').addEventListener('click', () => {

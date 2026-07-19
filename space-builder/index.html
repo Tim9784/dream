@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🚀 Space Station Builder</title>
+    <title>Space Station Builder</title>
     <style>
         * {
             margin: 0;
@@ -15,9 +15,10 @@
         body {
             overflow: hidden;
             background: #000;
-            font-family: 'Segoe UI', Tahoma, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
 
         #game-container {
@@ -26,65 +27,44 @@
             position: relative;
         }
 
-        canvas#main-canvas {
-            display: block;
-        }
-
-        #ui {
+        #stats {
             position: absolute;
             top: 10px;
             left: 10px;
-            right: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            pointer-events: none;
-            z-index: 100;
-        }
-
-        #stats {
-            background: rgba(0, 20, 40, 0.85);
-            padding: 12px 16px;
+            background: rgba(0, 20, 40, 0.9);
+            padding: 10px 14px;
             border-radius: 12px;
             border: 1px solid rgba(0, 200, 255, 0.4);
             color: #0ff;
-            font-size: 13px;
-            backdrop-filter: blur(10px);
+            font-size: 12px;
+            z-index: 100;
         }
 
         #stats div {
-            margin: 4px 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        #stats .label {
-            color: rgba(255,255,255,0.7);
+            margin: 3px 0;
         }
 
         #stats .value {
             font-weight: bold;
-            min-width: 30px;
         }
+
+        .energy-positive { color: #4f4 !important; }
+        .energy-negative { color: #f66 !important; }
 
         #module-panel {
             position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 15, 30, 0.95);
+            background: rgba(0, 10, 25, 0.95);
             padding: 8px;
             display: flex;
-            gap: 8px;
+            gap: 6px;
             overflow-x: auto;
             overflow-y: hidden;
-            pointer-events: auto;
-            border-top: 2px solid rgba(0, 200, 255, 0.4);
+            border-top: 2px solid rgba(0, 150, 255, 0.4);
             z-index: 100;
-            backdrop-filter: blur(10px);
-            scrollbar-width: none;
-            -ms-overflow-style: none;
+            -webkit-overflow-scrolling: touch;
         }
 
         #module-panel::-webkit-scrollbar {
@@ -93,130 +73,129 @@
 
         .module-btn {
             flex-shrink: 0;
-            width: 64px;
-            height: 74px;
-            background: rgba(0, 60, 100, 0.5);
+            width: 58px;
+            height: 68px;
+            background: rgba(0, 50, 80, 0.6);
             border: 2px solid rgba(0, 150, 200, 0.5);
             border-radius: 10px;
             color: white;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: space-between;
-            padding: 6px 4px;
+            justify-content: center;
+            gap: 4px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.15s;
         }
 
         .module-btn.selected {
-            background: rgba(0, 200, 255, 0.3);
+            background: rgba(0, 180, 255, 0.3);
             border-color: #0ff;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
             transform: scale(1.05);
         }
 
         .module-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.92);
         }
 
-        .module-btn canvas {
-            width: 48px;
-            height: 48px;
+        .module-btn .icon {
+            width: 36px;
+            height: 36px;
             border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .module-btn .icon svg {
+            width: 28px;
+            height: 28px;
         }
 
         .module-btn .name {
-            font-size: 9px;
+            font-size: 8px;
             text-align: center;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            width: 100%;
-            color: rgba(255,255,255,0.9);
+            line-height: 1.1;
+            color: rgba(255,255,255,0.85);
         }
 
         #controls-hint {
             position: absolute;
-            bottom: 95px;
+            bottom: 88px;
             left: 50%;
             transform: translateX(-50%);
             color: rgba(255, 255, 255, 0.5);
-            font-size: 11px;
+            font-size: 10px;
             text-align: center;
             z-index: 100;
             pointer-events: none;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 12px;
-            border-radius: 15px;
+            background: rgba(0,0,0,0.6);
+            padding: 4px 10px;
+            border-radius: 12px;
+            white-space: nowrap;
         }
 
-        #rotate-btns {
+        #right-btns {
             position: absolute;
-            right: 10px;
+            right: 8px;
             top: 50%;
             transform: translateY(-50%);
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             z-index: 100;
         }
 
         .ctrl-btn {
-            width: 46px;
-            height: 46px;
-            background: rgba(0, 60, 100, 0.7);
-            border: 2px solid rgba(0, 200, 255, 0.5);
+            width: 42px;
+            height: 42px;
+            background: rgba(0, 50, 90, 0.8);
+            border: 2px solid rgba(0, 180, 255, 0.5);
             border-radius: 50%;
             color: white;
-            font-size: 18px;
+            font-size: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            backdrop-filter: blur(5px);
         }
 
         .ctrl-btn:active {
-            background: rgba(0, 200, 255, 0.5);
-            transform: scale(0.95);
+            background: rgba(0, 180, 255, 0.6);
         }
 
         #left-btns {
             position: absolute;
-            left: 10px;
+            left: 8px;
             top: 50%;
             transform: translateY(-50%);
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
             z-index: 100;
         }
 
         #delete-btn {
-            background: rgba(100, 30, 30, 0.7);
-            border-color: rgba(255, 100, 100, 0.5);
+            background: rgba(100, 30, 30, 0.8);
+            border-color: rgba(255, 80, 80, 0.6);
         }
 
         #delete-btn.active {
-            background: rgba(200, 50, 50, 0.8);
-            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+            background: rgba(220, 50, 50, 0.9);
+            box-shadow: 0 0 12px rgba(255, 0, 0, 0.6);
         }
-
-        .energy-positive { color: #4f4 !important; }
-        .energy-negative { color: #f66 !important; }
     </style>
 </head>
 <body>
     <div id="game-container">
-        <div id="ui">
-            <div id="stats">
-                <div><span class="label">Модули:</span> <span class="value" id="module-count">0</span></div>
-                <div><span class="label">Энергия:</span> <span class="value" id="energy">0</span></div>
-                <div><span class="label">Экипаж:</span> <span class="value" id="crew">0</span></div>
-            </div>
+        <div id="stats">
+            <div>Модули: <span class="value" id="module-count">0</span></div>
+            <div>Энергия: <span class="value" id="energy">0</span></div>
+            <div>Экипаж: <span class="value" id="crew">0</span></div>
         </div>
 
-        <div id="rotate-btns">
+        <div id="right-btns">
             <button class="ctrl-btn" id="rotate-up">▲</button>
             <button class="ctrl-btn" id="rotate-left">◀</button>
             <button class="ctrl-btn" id="rotate-right">▶</button>
@@ -230,10 +209,71 @@
         </div>
 
         <div id="controls-hint">
-            Тап — поставить | Двойной тап — удалить | Свайп — вращать
+            Тап — поставить | Свайп — вращать
         </div>
 
-        <div id="module-panel"></div>
+        <div id="module-panel">
+            <button class="module-btn selected" data-module="core">
+                <div class="icon" style="background: linear-gradient(135deg, #4488ff, #2266dd);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 2L4 6v12l8 4 8-4V6l-8-4zm0 2.5L17 7l-5 2.5L7 7l5-2.5zM6 8.5l5 2.5v7l-5-2.5v-7zm12 0v7l-5 2.5v-7l5-2.5z"/></svg>
+                </div>
+                <span class="name">Ядро</span>
+            </button>
+            <button class="module-btn" data-module="habitat">
+                <div class="icon" style="background: linear-gradient(135deg, #44aa66, #228844);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 3C7 3 3 7 3 12s4 9 9 9 9-4 9-9-4-9-9-9zm0 16c-3.9 0-7-3.1-7-7s3.1-7 7-7 7 3.1 7 7-3.1 7-7 7zm-1-11h2v6h-2zm-3 0h2v6H8zm6 0h2v6h-2z"/></svg>
+                </div>
+                <span class="name">Жилой</span>
+            </button>
+            <button class="module-btn" data-module="lab">
+                <div class="icon" style="background: linear-gradient(135deg, #ffffff, #aabbcc);">
+                    <svg viewBox="0 0 24 24" fill="#334"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm-2-9a2 2 0 114 0 2 2 0 01-4 0z"/></svg>
+                </div>
+                <span class="name">Лаборатория</span>
+            </button>
+            <button class="module-btn" data-module="solar">
+                <div class="icon" style="background: linear-gradient(135deg, #2255aa, #112266);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M3 11h8V3H3v8zm2-6h4v4H5V5zm8-2v8h8V3h-8zm6 6h-4V5h4v4zM3 21h8v-8H3v8zm2-6h4v4H5v-4zm13-2h-2v3h-3v2h3v3h2v-3h3v-2h-3v-3z"/></svg>
+                </div>
+                <span class="name">Солн. панель</span>
+            </button>
+            <button class="module-btn" data-module="storage">
+                <div class="icon" style="background: linear-gradient(135deg, #dd8833, #aa5511);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1 0-2 1-2 2v16c0 1 1 2 2 2h16c1 0 2-1 2-2V4c0-1-1-2-2-2zm0 18H4V4h16v16zM6 6h12v4H6V6zm0 6h12v6H6v-6z"/></svg>
+                </div>
+                <span class="name">Склад</span>
+            </button>
+            <button class="module-btn" data-module="dock">
+                <div class="icon" style="background: linear-gradient(135deg, #dd4444, #aa2222);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8zm0-14c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6-2.7-6-6-6zm0 10c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/></svg>
+                </div>
+                <span class="name">Док</span>
+            </button>
+            <button class="module-btn" data-module="antenna">
+                <div class="icon" style="background: linear-gradient(135deg, #aaaaaa, #666666);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 5c-3.9 0-7 3.1-7 7h2c0-2.8 2.2-5 5-5s5 2.2 5 5h2c0-3.9-3.1-7-7-7zm0-4C5.9 1 1 5.9 1 12h2c0-5 4-9 9-9s9 4 9 9h2c0-6.1-4.9-11-11-11zm0 8c-1.7 0-3 1.3-3 3h2c0-.6.4-1 1-1s1 .4 1 1h2c0-1.7-1.3-3-3-3zm-1 6h2v5h-2z"/></svg>
+                </div>
+                <span class="name">Антенна</span>
+            </button>
+            <button class="module-btn" data-module="engine">
+                <div class="icon" style="background: linear-gradient(135deg, #ff6600, #cc3300);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 2L8 8h8l-4-6zm-4 8l-4 6h16l-4-6H8zm-4 8l4 4h8l4-4H4z"/></svg>
+                </div>
+                <span class="name">Двигатель</span>
+            </button>
+            <button class="module-btn" data-module="corridor">
+                <div class="icon" style="background: linear-gradient(135deg, #667788, #445566);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M4 10h16v4H4v-4zm0-4h16v2H4V6zm0 10h16v2H4v-2z"/></svg>
+                </div>
+                <span class="name">Коридор</span>
+            </button>
+            <button class="module-btn" data-module="greenhouse">
+                <div class="icon" style="background: linear-gradient(135deg, #33cc55, #229933);">
+                    <svg viewBox="0 0 24 24" fill="white"><path d="M12 2C8 2 4 6 4 12c0 4 3 8 8 10 5-2 8-6 8-10 0-6-4-10-8-10zm0 18c-3.3-1.5-6-4.5-6-8 0-4 3-8 6-8s6 4 6 8c0 3.5-2.7 6.5-6 8zm-1-13v6h2V7h-2zm-2 3v4h2v-4H9zm4 1v3h2v-3h-2z"/></svg>
+                </div>
+                <span class="name">Теплица</span>
+            </button>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
