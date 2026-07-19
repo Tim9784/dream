@@ -638,7 +638,7 @@ def api_auth_request_link():
     if not rate_limit(f"authemail:{email}", RL_AUTH_EMAIL[0], RL_AUTH_EMAIL[1]):
         return jsonify({
             "ok": False,
-            "error": "На этот email уже отправляли ссылку. Подожди немного или проверь почту (и «Спам»).",
+            "error": "На этот email уже отправляли код. Подожди немного или проверь почту (и «Спам»).",
         }), 429
     try:
         result = auth_mod.request_login_link(email, data.get("name"))
@@ -649,7 +649,7 @@ def api_auth_request_link():
     payload = {
         "ok": True,
         "email": result.get("email"),
-        "message": "Ссылка для входа отправлена на email",
+        "message": "Код для входа отправлен на email",
     }
     if result.get("hint"):
         payload["hint"] = result["hint"]
@@ -664,13 +664,13 @@ def api_auth_verify():
     data = read_json()
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
-    token = auth_mod.normalize_magic_token(data.get("token"))
+    token = auth_mod.normalize_magic_token(data.get("token") or data.get("code"))
     try:
         result = auth_mod.consume_magic_token(token)
     except Exception:
         return jsonify({"ok": False, "error": "Ошибка авторизации"}), 500
     if not result:
-        return jsonify({"ok": False, "error": "Ссылка недействительна или устарела"}), 400
+        return jsonify({"ok": False, "error": "Код неверный или устарел. Запроси новый."}), 400
     resp = make_response(jsonify({"ok": True, "user": result["user"]}))
     return set_session_cookie(resp, result["session"])
 

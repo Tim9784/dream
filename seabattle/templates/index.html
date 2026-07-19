@@ -20,7 +20,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260718s">
+<link rel="stylesheet" href="/static/style.css?v=20260719a">
 <script>
 (function(){
   try{
@@ -119,21 +119,21 @@
         <strong id="authTitle">Вход на сайт</strong>
         <button type="button" class="btn danger" id="btnAuthClose">Закрыть</button>
       </div>
-      <p class="hint" style="text-align:left;margin-top:8px">Укажи email — пришлём ссылку для входа. Пароль не нужен.</p>
+      <p class="hint" style="text-align:left;margin-top:8px">Укажи email — пришлём код для входа. Пароль не нужен.</p>
       <div class="row" style="margin-top:12px">
         <label style="flex:1"><span>Email</span><input id="authEmail" type="email" maxlength="120" placeholder="you@mail.ru" autocomplete="email"></label>
         <label style="flex:1"><span>Имя в играх</span><input id="authName" type="text" maxlength="20" placeholder="Лиса" autocomplete="nickname"></label>
       </div>
       <div class="row" style="margin-top:14px">
-        <button type="button" class="btn" id="btnAuthSend">Получить ссылку</button>
+        <button type="button" class="btn" id="btnAuthSend">Получить код</button>
       </div>
       <hr class="soft-hr">
-      <p class="hint" style="text-align:left;margin:0">Если ссылка из письма не открывается — скопируй код или ссылку сюда:</p>
+      <p class="hint" style="text-align:left;margin:0">Вставь 6-значный код из письма:</p>
       <div class="row" style="margin-top:10px">
-        <label style="flex:1"><span>Код или ссылка из письма</span><input id="authCode" type="text" maxlength="200" placeholder="omove.ru/a/… или код" autocomplete="one-time-code"></label>
+        <label style="flex:1"><span>Код из письма</span><input id="authCode" type="text" inputmode="numeric" maxlength="32" placeholder="123456" autocomplete="one-time-code"></label>
       </div>
       <div class="row" style="margin-top:12px">
-        <button type="button" class="btn ghost" id="btnAuthCode">Войти по коду</button>
+        <button type="button" class="btn" id="btnAuthCode">Войти по коду</button>
       </div>
       <div class="hint" id="authHint" style="text-align:left;margin-top:10px"></div>
       <div class="err" id="authErr"></div>

@@ -18,8 +18,8 @@ from db import connect, ensure_schema, load_config
 
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$")
 SAFE_NAME_RE = re.compile(r"[\x00-\x1f\x7f<>{}[\]\\\"`]")
-# короткий токен: не ломается переносами в почтовых клиентах
-TOKEN_RE = re.compile(r"^[0-9a-f]{16,64}$")
+# код из письма: 6 цифр (основной способ) + старые hex-токены
+TOKEN_RE = re.compile(r"^([0-9]{6}|[0-9a-f]{16,64})$")
 MAGIC_TTL = 30 * 60
 SESSION_TTL = 60 * 60 * 24 * 30
 SESSION_COOKIE = "omove_sid"
@@ -42,9 +42,11 @@ def normalize_display_name(raw: Any, fallback: str = "Игрок") -> str:
 
 def normalize_magic_token(raw: Any) -> str:
     token = str(raw or "").strip().lower()
-    if not TOKEN_RE.match(token):
-        return ""
-    return token
+    # убираем пробелы/дефисы из кода вида 123 456
+    compact = re.sub(r"[\s\-]", "", token)
+    if TOKEN_RE.match(compact):
+        return compact
+    return ""
 
 
 def public_user(row: dict[str, Any]) -> dict[str, Any]:
@@ -76,43 +78,36 @@ def mail_from_parts() -> tuple[str, str]:
 
 
 def magic_login_url(token: str) -> str:
-    """Ссылка для письма.
-
-    Публичный HTTPS у omove.ru сейчас часто ломается (Masterhost TLS),
-    поэтому в письмах всегда http://omove.ru — так страница /a/… открывается.
-    """
+    """Оставлено для совместимости; вход теперь через код на сайте."""
     token = normalize_magic_token(token) or str(token or "").strip().lower()
     return f"http://omove.ru/a/{token}"
 
 
-def build_login_email(name: str, link: str) -> tuple[str, str]:
-    """Возвращает (text_body, html_body)."""
+def build_login_email(name: str, code: str) -> tuple[str, str]:
+    """Письмо только с кодом — без ссылок и кнопок."""
     safe_name = name.strip() or "Игрок"
-    code = link.rstrip("/").rsplit("/", 1)[-1]
+    code = normalize_magic_token(code) or str(code or "").strip()
     text = (
-        "Omove.ru — вход\n"
+        "Omove.ru — код для входа\n"
         "\n"
         f"Привет, {safe_name}!\n"
         "\n"
-        "Нажми кнопку «Войти» в письме или открой ссылку:\n"
-        f"{link}\n"
-        "\n"
-        "Если ссылка не открывается — зайди на omove.ru → Войти → вставь код:\n"
+        "Твой код для входа:\n"
         f"{code}\n"
         "\n"
-        "Срок действия — 30 минут. Если ты не запрашивал вход — удали письмо.\n"
+        "Открой omove.ru → «Войти» → вставь этот код → «Войти по коду».\n"
+        "Срок действия — 30 минут.\n"
+        "\n"
+        "Если ты не запрашивал вход — просто удали письмо.\n"
     )
-    href = html.escape(link, quote=True)
     name_html = html.escape(safe_name)
     code_html = html.escape(code)
-    # Крупная «bulletproof»-кнопка (таблица + VML для Outlook) — главный CTA в письме
     html_body = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="x-ua-compatible" content="ie=edge">
-<title>Вход на Omove.ru</title>
+<title>Код входа — Omove.ru</title>
 </head>
 <body style="margin:0;padding:0;background:#0b1724;-webkit-text-size-adjust:100%;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1724;border-collapse:collapse;">
@@ -123,45 +118,16 @@ def build_login_email(name: str, link: str) -> tuple[str, str]:
             <td style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8f1f8;">
               <div style="font-size:26px;font-weight:700;color:#7dd3fc;margin:0 0 16px 0;">Omove.ru</div>
               <div style="font-size:16px;line-height:1.5;margin:0 0 10px 0;">Привет, {name_html}!</div>
-              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
-                Нажми кнопку ниже, чтобы войти. На следующей странице ещё раз подтверди вход.
+              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 18px 0;">
+                Код для входа на сайте:
               </div>
-
-              <!--[if mso]>
-              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{href}" style="height:52px;v-text-anchor:middle;width:260px;" arcsize="16%" stroke="f" fillcolor="#38bdf8">
-                <w:anchorlock/>
-                <center style="color:#0b1724;font-family:Arial,sans-serif;font-size:18px;font-weight:700;">Войти на Omove.ru</center>
-              </v:roundrect>
-              <![endif]-->
-              <!--[if !mso]><!-- -->
-              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 8px auto;border-collapse:collapse;">
-                <tr>
-                  <td align="center" bgcolor="#38bdf8" style="border-radius:14px;background-color:#38bdf8;">
-                    <a href="{href}" target="_blank" rel="noopener"
-                       style="display:inline-block;padding:16px 40px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:22px;font-weight:700;color:#0b1724;text-decoration:none;border-radius:14px;background-color:#38bdf8;">
-                      Войти на Omove.ru
-                    </a>
-                  </td>
-                </tr>
-              </table>
-              <!--<![endif]-->
-
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:18px 0 8px 0;text-align:center;">
-                Кнопка не нажимается? Открой ссылку:
-              </div>
-              <div style="font-size:14px;line-height:1.6;margin:0 0 20px 0;text-align:center;word-break:break-all;">
-                <a href="{href}" target="_blank" rel="noopener" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
-              </div>
-
-              <div style="height:1px;background:#27445f;line-height:1px;font-size:1px;margin:8px 0 18px 0;">&nbsp;</div>
-
-              <div style="font-size:14px;line-height:1.5;color:#c5d7e6;margin:0 0 8px 0;">
-                Или зайди на omove.ru → «Войти» → вставь код:
-              </div>
-              <div style="font-size:24px;font-weight:700;letter-spacing:0.06em;color:#e8f1f8;margin:0 0 8px 0;font-family:Consolas,Monaco,monospace;text-align:center;">
+              <div style="font-size:36px;font-weight:700;letter-spacing:0.18em;color:#e8f1f8;margin:0 0 8px 0;font-family:Consolas,Monaco,monospace;text-align:center;">
                 {code_html}
               </div>
-              <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:16px 0 0 0;">
+              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:18px 0 0 0;">
+                Открой <strong>omove.ru</strong> → «Войти» → вставь код → «Войти по коду».
+              </div>
+              <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:18px 0 0 0;">
                 Срок — 30 минут. Если ты не запрашивал вход — просто удали письмо.
               </div>
             </td>
@@ -254,8 +220,7 @@ def send_email(to_addr: str, subject: str, text_body: str, html_body: str | None
 
 def create_magic_link(email: str, name: str) -> str:
     ensure_schema()
-    # 16 hex-символов (~https://omove.ru/a/0123456789abcdef) — целиком копируется
-    token = secrets.token_hex(8)
+    # 6 цифр — удобно ввести с телефона
     exp = time.time() + MAGIC_TTL
     with connect() as conn:
         with conn.cursor() as cur:
@@ -263,6 +228,18 @@ def create_magic_link(email: str, name: str) -> str:
                 "DELETE FROM `omove_magic` WHERE `email`=%s OR `exp` <= %s",
                 (email, time.time()),
             )
+            token = ""
+            for _ in range(8):
+                candidate = f"{secrets.randbelow(1_000_000):06d}"
+                cur.execute(
+                    "SELECT `token` FROM `omove_magic` WHERE `token`=%s LIMIT 1",
+                    (candidate,),
+                )
+                if not cur.fetchone():
+                    token = candidate
+                    break
+            if not token:
+                token = f"{secrets.randbelow(1_000_000):06d}"
             cur.execute(
                 "INSERT INTO `omove_magic` (`token`, `email`, `name`, `exp`) VALUES (%s, %s, %s, %s)",
                 (token, email, name, exp),
@@ -283,19 +260,15 @@ def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:
         name = normalize_display_name(existing["name"])
     else:
         name = normalize_display_name(raw_name)
-    token = create_magic_link(email, name)
-    link = magic_login_url(token)
-    text_body, html_body = build_login_email(name, link)
-    send_email(email, "Вход на Omove.ru", text_body, html_body)
+    code = create_magic_link(email, name)
+    text_body, html_body = build_login_email(name, code)
+    send_email(email, f"Код входа: {code}", text_body, html_body)
     out = {"ok": True, "email": email}
     out["hint"] = (
-        "В письме нажми синюю кнопку «Войти на Omove.ru». "
-        "Если кнопка не открывается — скопируй код из письма сюда (поле ниже)."
+        "Письмо отправлено. Скопируй 6-значный код из письма и вставь его ниже."
     )
     if email.endswith("@gmail.com") or email.endswith("@googlemail.com"):
-        out["hint"] += (
-            " Письма на Gmail могут попасть в «Спам», пока для omove.ru нет SPF."
-        )
+        out["hint"] += " Если письма нет — проверь «Спам»."
     return out
 
 
