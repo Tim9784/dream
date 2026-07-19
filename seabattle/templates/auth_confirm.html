@@ -2,32 +2,49 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Вход — {{ site_title }}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260718g">
+<style>
+  :root{color-scheme:dark}
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;font-family:Arial,Helvetica,sans-serif;
+    background:#0b1724;color:#e8f1f8;
+    display:flex;align-items:center;justify-content:center;padding:24px 14px;
+  }
+  .card{
+    width:min(440px,100%);background:#102033;border:1px solid #27445f;
+    border-radius:18px;padding:28px 22px 22px;text-align:center;
+  }
+  .brand{margin:0 0 18px;font-size:2rem;font-weight:800;color:#7dd3fc;letter-spacing:-.02em}
+  h1{margin:0 0 10px;font-size:1.35rem}
+  p{margin:0 0 12px;color:#c5d7e6;line-height:1.5;font-size:1rem}
+  .btn{
+    display:block;width:100%;margin-top:8px;padding:16px 18px;border:0;border-radius:14px;
+    background:#e8f1f8;color:#0b1724;font:inherit;font-size:1.1rem;font-weight:700;
+    text-decoration:none;cursor:pointer;text-align:center;
+  }
+  .btn:active{transform:scale(.98)}
+  .ghost{background:transparent;color:#e8f1f8;border:1px solid #27445f;margin-top:12px}
+  .hint{margin-top:16px;font-size:.85rem;color:#9db4c6}
+</style>
 </head>
 <body>
-<div class="wrap" style="max-width:480px;padding-top:48px">
-  <h1 class="brand" style="font-size:2.2rem;margin-bottom:8px">{{ site_title }}</h1>
-  <section class="panel">
+  <div class="card">
+    <div class="brand">{{ site_title }}</div>
     {% if invalid %}
-      <h2 class="section-title">Ссылка не работает</h2>
-      <p class="hint" style="text-align:left">Она уже использована или устарела. Вернись на сайт и запроси новую.</p>
-      <div class="row" style="margin-top:16px">
-        <a class="btn" href="/">На главную</a>
-      </div>
+      <h1>Ссылка не работает</h1>
+      <p>Она уже использована или устарела. Вернись на сайт и запроси новую.</p>
+      <a class="btn" href="/">На главную</a>
     {% else %}
-      <h2 class="section-title">Подтверди вход</h2>
-      <p class="hint" style="text-align:left">Нажми кнопку ниже, чтобы войти{% if name %} как <strong>{{ name }}</strong>{% endif %}.</p>
-      <form method="post" action="/a/{{ token }}" style="margin-top:18px">
-        <button type="submit" class="btn" style="width:100%">Войти на {{ site_title }}</button>
+      <h1>Подтверди вход</h1>
+      <p>Нажми кнопку ниже, чтобы войти{% if name %} как <strong>{{ name }}</strong>{% endif %}.</p>
+      <form method="post" action="/a/{{ token }}">
+        <button type="submit" class="btn">Войти на {{ site_title }}</button>
       </form>
-      <p class="hint" style="text-align:left;margin-top:14px">Это защита от автоматического открытия ссылки почтовым приложением.</p>
+      <p class="hint">Это защита от автоматического открытия ссылки почтовым приложением.</p>
+      <a class="btn ghost" href="/">Отмена</a>
     {% endif %}
-  </section>
-</div>
+  </div>
 </body>
 </html>

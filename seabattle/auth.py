@@ -75,62 +75,94 @@ def mail_from_parts() -> tuple[str, str]:
     return header, email
 
 
+def magic_login_url(token: str) -> str:
+    """Ссылка для письма.
+
+    Публичный HTTPS у omove.ru сейчас часто ломается (Masterhost TLS),
+    поэтому в письмах всегда http://omove.ru — так страница /a/… открывается.
+    """
+    token = normalize_magic_token(token) or str(token or "").strip().lower()
+    return f"http://omove.ru/a/{token}"
+
+
 def build_login_email(name: str, link: str) -> tuple[str, str]:
     """Возвращает (text_body, html_body)."""
     safe_name = name.strip() or "Игрок"
-    # короткая ссылка целиком на одной строке — её легко скопировать
-    # короткий код — если https/ссылка с телефона не открывается
     code = link.rstrip("/").rsplit("/", 1)[-1]
     text = (
         "Omove.ru — вход\n"
         "\n"
         f"Привет, {safe_name}!\n"
         "\n"
-        "1) Открой сайт omove.ru → Войти → вставь код:\n"
-        f"{code}\n"
-        "\n"
-        "2) Или открой ссылку и нажми «Войти» (30 минут):\n"
+        "Нажми кнопку «Войти» в письме или открой ссылку:\n"
         f"{link}\n"
         "\n"
-        "Если ты не запрашивал вход — просто удали письмо.\n"
+        "Если ссылка не открывается — зайди на omove.ru → Войти → вставь код:\n"
+        f"{code}\n"
+        "\n"
+        "Срок действия — 30 минут. Если ты не запрашивал вход — удали письмо.\n"
     )
     href = html.escape(link, quote=True)
     name_html = html.escape(safe_name)
-    # «Bulletproof»-кнопка таблицей — кликабельна в Yandex/Mail.ru/Outlook
+    code_html = html.escape(code)
+    # Крупная «bulletproof»-кнопка (таблица + VML для Outlook) — главный CTA в письме
     html_body = f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="x-ua-compatible" content="ie=edge">
 <title>Вход на Omove.ru</title>
 </head>
-<body style="margin:0;padding:0;background:#0b1724;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1724;">
+<body style="margin:0;padding:0;background:#0b1724;-webkit-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#0b1724;border-collapse:collapse;">
     <tr>
       <td align="center" style="padding:28px 12px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:480px;background:#102033;border:1px solid #27445f;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:480px;background:#102033;border:1px solid #27445f;border-collapse:collapse;">
           <tr>
             <td style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#e8f1f8;">
               <div style="font-size:26px;font-weight:700;color:#7dd3fc;margin:0 0 16px 0;">Omove.ru</div>
-              <div style="font-size:16px;line-height:1.5;margin:0 0 8px 0;">Привет, {name_html}!</div>
-              <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 14px 0;">
-                Код для входа на сайте (если ссылка с телефона не открывается):
-              </div>
-              <div style="font-size:22px;font-weight:700;letter-spacing:0.04em;color:#e8f1f8;margin:0 0 22px 0;font-family:Consolas,Monaco,monospace;">
-                {html.escape(code)}
-              </div>
+              <div style="font-size:16px;line-height:1.5;margin:0 0 10px 0;">Привет, {name_html}!</div>
               <div style="font-size:15px;line-height:1.5;color:#c5d7e6;margin:0 0 22px 0;">
-                Надёжный способ: сайт → «Войти» → вставь код выше. Срок — 30 минут.
+                Нажми кнопку ниже, чтобы войти. На следующей странице ещё раз подтверди вход.
               </div>
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0 0 8px 0;">Ссылка (если открывается):</div>
-              <div style="font-size:15px;line-height:1.6;margin:0 0 8px 0;">
-                <a href="{href}" style="color:#7dd3fc;text-decoration:underline;word-break:break-all;">{href}</a>
+
+              <!--[if mso]>
+              <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{href}" style="height:52px;v-text-anchor:middle;width:260px;" arcsize="16%" stroke="f" fillcolor="#38bdf8">
+                <w:anchorlock/>
+                <center style="color:#0b1724;font-family:Arial,sans-serif;font-size:18px;font-weight:700;">Войти на Omove.ru</center>
+              </v:roundrect>
+              <![endif]-->
+              <!--[if !mso]><!-- -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto 8px auto;border-collapse:collapse;">
+                <tr>
+                  <td align="center" bgcolor="#38bdf8" style="border-radius:14px;background-color:#38bdf8;">
+                    <a href="{href}" target="_blank" rel="noopener"
+                       style="display:inline-block;padding:16px 40px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:22px;font-weight:700;color:#0b1724;text-decoration:none;border-radius:14px;background-color:#38bdf8;">
+                      Войти на Omove.ru
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <!--<![endif]-->
+
+              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:18px 0 8px 0;text-align:center;">
+                Кнопка не нажимается? Открой ссылку:
               </div>
-              <div style="font-size:13px;line-height:1.5;color:#9db4c6;margin:0;">
-                Нажми на синюю ссылку выше — откроется страница, там кнопка «Войти».
+              <div style="font-size:14px;line-height:1.6;margin:0 0 20px 0;text-align:center;word-break:break-all;">
+                <a href="{href}" target="_blank" rel="noopener" style="color:#7dd3fc;text-decoration:underline;">{href}</a>
               </div>
-              <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:20px 0 0 0;">
-                Если ты не запрашивал вход — просто удали письмо.
+
+              <div style="height:1px;background:#27445f;line-height:1px;font-size:1px;margin:8px 0 18px 0;">&nbsp;</div>
+
+              <div style="font-size:14px;line-height:1.5;color:#c5d7e6;margin:0 0 8px 0;">
+                Или зайди на omove.ru → «Войти» → вставь код:
+              </div>
+              <div style="font-size:24px;font-weight:700;letter-spacing:0.06em;color:#e8f1f8;margin:0 0 8px 0;font-family:Consolas,Monaco,monospace;text-align:center;">
+                {code_html}
+              </div>
+              <div style="font-size:12px;line-height:1.5;color:#6f8799;margin:16px 0 0 0;">
+                Срок — 30 минут. Если ты не запрашивал вход — просто удали письмо.
               </div>
             </td>
           </tr>
@@ -238,17 +270,6 @@ def create_magic_link(email: str, name: str) -> str:
     return token
 
 
-def magic_login_url(token: str) -> str:
-    # В письмах даём http:// — на Masterhost https часто не открывается с телефона.
-    # Когда DNS/SSL починены, http всё равно откроет сайт (или редиректнет).
-    base = site_base_url()
-    if base.startswith("https://"):
-        base = "http://" + base[len("https://") :]
-    elif not base.startswith("http://"):
-        base = "http://omove.ru"
-    return f"{base.rstrip('/')}/a/{token}"
-
-
 def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:
     email = normalize_email(email_raw)
     if not email:
@@ -267,11 +288,13 @@ def request_login_link(email_raw: Any, name_raw: Any) -> dict[str, Any]:
     text_body, html_body = build_login_email(name, link)
     send_email(email, "Вход на Omove.ru", text_body, html_body)
     out = {"ok": True, "email": email}
-    # для Gmail без SPF письма часто не доходят — подсказка в UI
+    out["hint"] = (
+        "В письме нажми синюю кнопку «Войти на Omove.ru». "
+        "Если кнопка не открывается — скопируй код из письма сюда (поле ниже)."
+    )
     if email.endswith("@gmail.com") or email.endswith("@googlemail.com"):
-        out["hint"] = (
-            "Письма на Gmail могут не доходить, пока для omove.ru в DNS нет SPF. "
-            "Проверь «Спам» или используй другой email (Яндекс/Mail.ru)."
+        out["hint"] += (
+            " Письма на Gmail могут попасть в «Спам», пока для omove.ru нет SPF."
         )
     return out
 
