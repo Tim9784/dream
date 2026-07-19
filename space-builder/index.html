@@ -26,7 +26,7 @@
             position: relative;
         }
 
-        canvas {
+        canvas#main-canvas {
             display: block;
         }
 
@@ -43,16 +43,29 @@
         }
 
         #stats {
-            background: rgba(0, 20, 40, 0.8);
-            padding: 10px 15px;
-            border-radius: 10px;
-            border: 1px solid rgba(0, 200, 255, 0.3);
+            background: rgba(0, 20, 40, 0.85);
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 200, 255, 0.4);
             color: #0ff;
-            font-size: 14px;
+            font-size: 13px;
+            backdrop-filter: blur(10px);
         }
 
         #stats div {
-            margin: 5px 0;
+            margin: 4px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #stats .label {
+            color: rgba(255,255,255,0.7);
+        }
+
+        #stats .value {
+            font-weight: bold;
+            min-width: 30px;
         }
 
         #module-panel {
@@ -60,62 +73,81 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(0, 20, 40, 0.9);
-            padding: 10px;
+            background: rgba(0, 15, 30, 0.95);
+            padding: 8px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
             overflow-x: auto;
+            overflow-y: hidden;
             pointer-events: auto;
-            border-top: 2px solid rgba(0, 200, 255, 0.3);
+            border-top: 2px solid rgba(0, 200, 255, 0.4);
             z-index: 100;
+            backdrop-filter: blur(10px);
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #module-panel::-webkit-scrollbar {
+            display: none;
         }
 
         .module-btn {
             flex-shrink: 0;
-            width: 70px;
-            height: 80px;
-            background: rgba(0, 100, 150, 0.5);
-            border: 2px solid rgba(0, 200, 255, 0.5);
+            width: 64px;
+            height: 74px;
+            background: rgba(0, 60, 100, 0.5);
+            border: 2px solid rgba(0, 150, 200, 0.5);
             border-radius: 10px;
             color: white;
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
+            padding: 6px 4px;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .module-btn.selected {
-            background: rgba(0, 200, 255, 0.4);
+            background: rgba(0, 200, 255, 0.3);
             border-color: #0ff;
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+            transform: scale(1.05);
         }
 
         .module-btn:active {
             transform: scale(0.95);
         }
 
-        .module-btn .icon {
-            font-size: 28px;
-            margin-bottom: 5px;
+        .module-btn canvas {
+            width: 48px;
+            height: 48px;
+            border-radius: 6px;
         }
 
         .module-btn .name {
-            font-size: 10px;
+            font-size: 9px;
             text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            width: 100%;
+            color: rgba(255,255,255,0.9);
         }
 
         #controls-hint {
             position: absolute;
-            bottom: 110px;
+            bottom: 95px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
             text-align: center;
             z-index: 100;
             pointer-events: none;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 12px;
+            border-radius: 15px;
         }
 
         #rotate-btns {
@@ -125,137 +157,83 @@
             transform: translateY(-50%);
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             z-index: 100;
         }
 
-        .rotate-btn {
-            width: 50px;
-            height: 50px;
-            background: rgba(0, 100, 150, 0.6);
+        .ctrl-btn {
+            width: 46px;
+            height: 46px;
+            background: rgba(0, 60, 100, 0.7);
             border: 2px solid rgba(0, 200, 255, 0.5);
             border-radius: 50%;
             color: white;
-            font-size: 20px;
+            font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            backdrop-filter: blur(5px);
         }
 
-        .rotate-btn:active {
+        .ctrl-btn:active {
             background: rgba(0, 200, 255, 0.5);
+            transform: scale(0.95);
         }
 
-        #delete-btn {
+        #left-btns {
             position: absolute;
             left: 10px;
             top: 50%;
             transform: translateY(-50%);
-            width: 50px;
-            height: 50px;
-            background: rgba(150, 50, 50, 0.6);
-            border: 2px solid rgba(255, 100, 100, 0.5);
-            border-radius: 50%;
-            color: white;
-            font-size: 24px;
             display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
+            flex-direction: column;
+            gap: 8px;
             z-index: 100;
+        }
+
+        #delete-btn {
+            background: rgba(100, 30, 30, 0.7);
+            border-color: rgba(255, 100, 100, 0.5);
         }
 
         #delete-btn.active {
-            background: rgba(255, 50, 50, 0.7);
+            background: rgba(200, 50, 50, 0.8);
             box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
         }
 
-        #zoom-btns {
-            position: absolute;
-            left: 10px;
-            bottom: 120px;
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            z-index: 100;
-        }
-
-        .zoom-btn {
-            width: 40px;
-            height: 40px;
-            background: rgba(0, 100, 150, 0.6);
-            border: 2px solid rgba(0, 200, 255, 0.5);
-            border-radius: 8px;
-            color: white;
-            font-size: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
+        .energy-positive { color: #4f4 !important; }
+        .energy-negative { color: #f66 !important; }
     </style>
 </head>
 <body>
     <div id="game-container">
         <div id="ui">
             <div id="stats">
-                <div>🛸 Модули: <span id="module-count">0</span></div>
-                <div>⚡ Энергия: <span id="energy">0</span></div>
-                <div>👥 Экипаж: <span id="crew">0</span></div>
+                <div><span class="label">Модули:</span> <span class="value" id="module-count">0</span></div>
+                <div><span class="label">Энергия:</span> <span class="value" id="energy">0</span></div>
+                <div><span class="label">Экипаж:</span> <span class="value" id="crew">0</span></div>
             </div>
         </div>
 
         <div id="rotate-btns">
-            <button class="rotate-btn" id="rotate-left">↺</button>
-            <button class="rotate-btn" id="rotate-right">↻</button>
+            <button class="ctrl-btn" id="rotate-up">▲</button>
+            <button class="ctrl-btn" id="rotate-left">◀</button>
+            <button class="ctrl-btn" id="rotate-right">▶</button>
+            <button class="ctrl-btn" id="rotate-down">▼</button>
         </div>
 
-        <button id="delete-btn">🗑</button>
-
-        <div id="zoom-btns">
-            <button class="zoom-btn" id="zoom-in">+</button>
-            <button class="zoom-btn" id="zoom-out">−</button>
+        <div id="left-btns">
+            <button class="ctrl-btn" id="zoom-in">+</button>
+            <button class="ctrl-btn" id="zoom-out">−</button>
+            <button class="ctrl-btn" id="delete-btn">✕</button>
         </div>
 
         <div id="controls-hint">
-            👆 Тап — поставить модуль | 👆👆 Двойной тап — удалить
+            Тап — поставить | Двойной тап — удалить | Свайп — вращать
         </div>
 
-        <div id="module-panel">
-            <button class="module-btn selected" data-module="core">
-                <span class="icon">🔷</span>
-                <span class="name">Ядро</span>
-            </button>
-            <button class="module-btn" data-module="solar">
-                <span class="icon">☀️</span>
-                <span class="name">Солн. панель</span>
-            </button>
-            <button class="module-btn" data-module="habitat">
-                <span class="icon">🏠</span>
-                <span class="name">Жилой</span>
-            </button>
-            <button class="module-btn" data-module="lab">
-                <span class="icon">🔬</span>
-                <span class="name">Лаборатория</span>
-            </button>
-            <button class="module-btn" data-module="storage">
-                <span class="icon">📦</span>
-                <span class="name">Склад</span>
-            </button>
-            <button class="module-btn" data-module="dock">
-                <span class="icon">🚀</span>
-                <span class="name">Док</span>
-            </button>
-            <button class="module-btn" data-module="antenna">
-                <span class="icon">📡</span>
-                <span class="name">Антенна</span>
-            </button>
-            <button class="module-btn" data-module="engine">
-                <span class="icon">🔥</span>
-                <span class="name">Двигатель</span>
-            </button>
-        </div>
+        <div id="module-panel"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>

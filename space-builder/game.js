@@ -1,4 +1,4 @@
-// Space Station Builder - 3D Game with Touch Controls
+// Space Station Builder - Enhanced 3D Game
 
 class SpaceStationBuilder {
     constructor() {
@@ -6,135 +6,143 @@ class SpaceStationBuilder {
         this.camera = null;
         this.renderer = null;
         this.modules = [];
-        this.stars = [];
         this.selectedModule = 'core';
         this.deleteMode = false;
-        this.cameraAngle = 0;
-        this.cameraDistance = 30;
-        this.cameraHeight = 20;
-        this.gridSize = 20;
+        this.cameraAngle = 0.5;
+        this.cameraPitch = 0.6;
+        this.cameraDistance = 35;
+        this.gridSize = 24;
         this.ghostModule = null;
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.grid = {};
+        this.connectionPoints = [];
         
-        this.moduleStats = {
-            core: { energy: 5, crew: 2 },
-            solar: { energy: 10, crew: 0 },
-            habitat: { energy: -2, crew: 4 },
-            lab: { energy: -3, crew: 2 },
-            storage: { energy: -1, crew: 0 },
-            dock: { energy: -2, crew: 1 },
-            antenna: { energy: -1, crew: 0 },
-            engine: { energy: -5, crew: 0 }
+        this.moduleData = {
+            core: { name: 'Ядро', energy: 5, crew: 2, color: 0x4488ff },
+            habitat: { name: 'Жилой', energy: -2, crew: 4, color: 0x44aa66 },
+            lab: { name: 'Лаборатория', energy: -3, crew: 2, color: 0xeeeeee },
+            solar: { name: 'Солн. панель', energy: 12, crew: 0, color: 0x2255aa, attachable: true },
+            storage: { name: 'Склад', energy: -1, crew: 0, color: 0xdd8833 },
+            dock: { name: 'Док', energy: -2, crew: 1, color: 0xdd4444 },
+            antenna: { name: 'Антенна', energy: -1, crew: 0, color: 0xaaaaaa, attachable: true },
+            engine: { name: 'Двигатель', energy: -5, crew: 0, color: 0xff6600, attachable: true },
+            corridor: { name: 'Коридор', energy: 0, crew: 0, color: 0x667788 },
+            greenhouse: { name: 'Теплица', energy: -2, crew: 1, color: 0x33cc55 }
         };
 
         this.init();
     }
 
     init() {
-        // Scene
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x000510);
+        this.scene.background = new THREE.Color(0x020510);
 
-        // Camera
         this.camera = new THREE.PerspectiveCamera(
-            60,
+            50,
             window.innerWidth / window.innerHeight,
             0.1,
             1000
         );
         this.updateCamera();
 
-        // Renderer
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({ 
+            antialias: true,
+            canvas: document.createElement('canvas')
+        });
+        this.renderer.domElement.id = 'main-canvas';
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
-        document.getElementById('game-container').appendChild(this.renderer.domElement);
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('game-container').insertBefore(
+            this.renderer.domElement,
+            document.getElementById('game-container').firstChild
+        );
 
-        // Lights
         this.setupLights();
-
-        // Stars background
         this.createStars();
-
-        // Grid helper
         this.createGrid();
-
-        // Earth in background
         this.createEarth();
-
-        // Events
+        this.createModuleButtons();
         this.setupEvents();
-
-        // Ghost module for preview
         this.createGhostModule();
-
-        // Animation
         this.animate();
     }
 
     setupLights() {
-        // Ambient
-        const ambient = new THREE.AmbientLight(0x404060, 0.5);
+        const ambient = new THREE.AmbientLight(0x404060, 0.4);
         this.scene.add(ambient);
 
-        // Sun light
-        const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-        sunLight.position.set(50, 30, 50);
+        const sunLight = new THREE.DirectionalLight(0xffffee, 1.2);
+        sunLight.position.set(50, 40, 30);
         sunLight.castShadow = true;
         sunLight.shadow.mapSize.width = 2048;
         sunLight.shadow.mapSize.height = 2048;
+        sunLight.shadow.camera.near = 1;
+        sunLight.shadow.camera.far = 150;
+        sunLight.shadow.camera.left = -30;
+        sunLight.shadow.camera.right = 30;
+        sunLight.shadow.camera.top = 30;
+        sunLight.shadow.camera.bottom = -30;
         this.scene.add(sunLight);
 
-        // Blue rim light
-        const rimLight = new THREE.DirectionalLight(0x0066ff, 0.3);
-        rimLight.position.set(-30, -10, -30);
-        this.scene.add(rimLight);
+        const fillLight = new THREE.DirectionalLight(0x4488ff, 0.3);
+        fillLight.position.set(-30, 20, -20);
+        this.scene.add(fillLight);
 
-        // Point lights for atmosphere
-        const pointLight1 = new THREE.PointLight(0x00ffff, 0.5, 50);
-        pointLight1.position.set(10, 10, 10);
-        this.scene.add(pointLight1);
+        const rimLight = new THREE.DirectionalLight(0xff8844, 0.2);
+        rimLight.position.set(0, -20, -40);
+        this.scene.add(rimLight);
     }
 
     createStars() {
         const starsGeometry = new THREE.BufferGeometry();
-        const starsMaterial = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: 0.5,
-            transparent: true
-        });
-
         const positions = [];
-        for (let i = 0; i < 2000; i++) {
+        const colors = [];
+        
+        for (let i = 0; i < 3000; i++) {
+            const radius = 200 + Math.random() * 300;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos(2 * Math.random() - 1);
+            
             positions.push(
-                (Math.random() - 0.5) * 500,
-                (Math.random() - 0.5) * 500,
-                (Math.random() - 0.5) * 500
+                radius * Math.sin(phi) * Math.cos(theta),
+                radius * Math.sin(phi) * Math.sin(theta),
+                radius * Math.cos(phi)
+            );
+            
+            const brightness = 0.5 + Math.random() * 0.5;
+            const tint = Math.random();
+            colors.push(
+                brightness * (0.8 + tint * 0.2),
+                brightness * (0.8 + (1-tint) * 0.2),
+                brightness
             );
         }
 
         starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        const stars = new THREE.Points(starsGeometry, starsMaterial);
-        this.scene.add(stars);
-        this.stars = stars;
+        starsGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        
+        const starsMaterial = new THREE.PointsMaterial({
+            size: 1.5,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9
+        });
+        
+        this.stars = new THREE.Points(starsGeometry, starsMaterial);
+        this.scene.add(this.stars);
     }
 
     createGrid() {
-        // Visual grid
-        const gridHelper = new THREE.GridHelper(this.gridSize, this.gridSize, 0x00ffff, 0x004444);
-        gridHelper.material.opacity = 0.3;
+        const gridHelper = new THREE.GridHelper(this.gridSize, this.gridSize, 0x00aaff, 0x003355);
+        gridHelper.material.opacity = 0.25;
         gridHelper.material.transparent = true;
         this.scene.add(gridHelper);
 
-        // Invisible plane for raycasting
         const planeGeometry = new THREE.PlaneGeometry(this.gridSize, this.gridSize);
-        const planeMaterial = new THREE.MeshBasicMaterial({
-            visible: false,
-            side: THREE.DoubleSide
-        });
+        const planeMaterial = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
         this.groundPlane = new THREE.Mesh(planeGeometry, planeMaterial);
         this.groundPlane.rotation.x = -Math.PI / 2;
         this.groundPlane.name = 'ground';
@@ -142,339 +150,746 @@ class SpaceStationBuilder {
     }
 
     createEarth() {
-        const earthGeometry = new THREE.SphereGeometry(50, 32, 32);
+        const earthGroup = new THREE.Group();
+        
+        const earthGeometry = new THREE.SphereGeometry(60, 64, 64);
         const earthMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2244aa,
-            emissive: 0x112244,
-            emissiveIntensity: 0.2
+            color: 0x1144aa,
+            emissive: 0x0a2255,
+            emissiveIntensity: 0.3,
+            roughness: 0.8
         });
         const earth = new THREE.Mesh(earthGeometry, earthMaterial);
-        earth.position.set(0, -80, -50);
-        this.scene.add(earth);
+        earthGroup.add(earth);
 
-        // Atmosphere glow
-        const glowGeometry = new THREE.SphereGeometry(52, 32, 32);
-        const glowMaterial = new THREE.MeshBasicMaterial({
-            color: 0x00aaff,
+        const cloudsGeometry = new THREE.SphereGeometry(61, 32, 32);
+        const cloudsMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
             transparent: true,
-            opacity: 0.2,
+            opacity: 0.3,
+            roughness: 1
+        });
+        const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
+        earthGroup.add(clouds);
+        this.clouds = clouds;
+
+        const atmosphereGeometry = new THREE.SphereGeometry(65, 32, 32);
+        const atmosphereMaterial = new THREE.MeshBasicMaterial({
+            color: 0x88ccff,
+            transparent: true,
+            opacity: 0.15,
             side: THREE.BackSide
         });
-        const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-        glow.position.copy(earth.position);
-        this.scene.add(glow);
+        const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
+        earthGroup.add(atmosphere);
+
+        earthGroup.position.set(0, -90, -60);
+        this.scene.add(earthGroup);
+        this.earth = earthGroup;
+    }
+
+    createModuleMesh(type, forPreview = false) {
+        const group = new THREE.Group();
+        const data = this.moduleData[type];
+        
+        const mainMat = new THREE.MeshStandardMaterial({
+            color: data.color,
+            metalness: 0.7,
+            roughness: 0.3
+        });
+        
+        const darkMat = new THREE.MeshStandardMaterial({
+            color: 0x222233,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: 0x88ffff,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        const detailMat = new THREE.MeshStandardMaterial({
+            color: 0x556677,
+            metalness: 0.9,
+            roughness: 0.2
+        });
+
+        switch(type) {
+            case 'core':
+                this.buildCore(group, mainMat, darkMat, glowMat, detailMat);
+                break;
+            case 'habitat':
+                this.buildHabitat(group, mainMat, darkMat, glowMat);
+                break;
+            case 'lab':
+                this.buildLab(group, mainMat, darkMat, glowMat, detailMat);
+                break;
+            case 'solar':
+                this.buildSolar(group, mainMat, darkMat);
+                break;
+            case 'storage':
+                this.buildStorage(group, mainMat, darkMat, detailMat);
+                break;
+            case 'dock':
+                this.buildDock(group, mainMat, darkMat, glowMat);
+                break;
+            case 'antenna':
+                this.buildAntenna(group, mainMat, darkMat, glowMat);
+                break;
+            case 'engine':
+                this.buildEngine(group, mainMat, darkMat);
+                break;
+            case 'corridor':
+                this.buildCorridor(group, mainMat, darkMat, detailMat);
+                break;
+            case 'greenhouse':
+                this.buildGreenhouse(group, mainMat, glowMat);
+                break;
+        }
+
+        group.userData.type = type;
+        
+        if (!forPreview) {
+            group.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+        }
+
+        return group;
+    }
+
+    buildCore(group, mainMat, darkMat, glowMat, detailMat) {
+        // Main octagonal body
+        const bodyGeom = new THREE.CylinderGeometry(1.2, 1.2, 2, 8);
+        const body = new THREE.Mesh(bodyGeom, mainMat);
+        body.rotation.y = Math.PI / 8;
+        group.add(body);
+
+        // End caps
+        const capGeom = new THREE.CylinderGeometry(1.0, 1.2, 0.3, 8);
+        [-1.15, 1.15].forEach(y => {
+            const cap = new THREE.Mesh(capGeom, detailMat);
+            cap.position.y = y;
+            cap.rotation.y = Math.PI / 8;
+            group.add(cap);
+        });
+
+        // Connection ports on 4 sides
+        const portGeom = new THREE.CylinderGeometry(0.35, 0.4, 0.5, 8);
+        [[1.4, 0], [-1.4, 0], [0, 1.4], [0, -1.4]].forEach(([x, z]) => {
+            const port = new THREE.Mesh(portGeom, darkMat);
+            port.position.set(x, 0, z);
+            port.rotation.x = z !== 0 ? Math.PI / 2 : 0;
+            port.rotation.z = x !== 0 ? Math.PI / 2 : 0;
+            group.add(port);
+            
+            // Glow ring
+            const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.35, 0.04, 8, 16),
+                glowMat
+            );
+            ring.position.set(x * 1.15, 0, z * 1.15);
+            ring.rotation.x = z !== 0 ? 0 : Math.PI / 2;
+            ring.rotation.y = x !== 0 ? Math.PI / 2 : 0;
+            group.add(ring);
+        });
+
+        // Top/bottom ports
+        [[0, 1.4], [0, -1.4]].forEach(([_, y]) => {
+            const port = new THREE.Mesh(portGeom, darkMat);
+            port.position.y = y;
+            group.add(port);
+        });
+    }
+
+    buildHabitat(group, mainMat, darkMat, glowMat) {
+        // Main cylinder
+        const bodyGeom = new THREE.CylinderGeometry(1, 1, 2.5, 16);
+        const body = new THREE.Mesh(bodyGeom, mainMat);
+        group.add(body);
+
+        // Rounded ends
+        const endGeom = new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+        const topEnd = new THREE.Mesh(endGeom, mainMat);
+        topEnd.position.y = 1.25;
+        group.add(topEnd);
+        
+        const bottomEnd = new THREE.Mesh(endGeom, mainMat);
+        bottomEnd.position.y = -1.25;
+        bottomEnd.rotation.x = Math.PI;
+        group.add(bottomEnd);
+
+        // Windows (2 rows of 6)
+        const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+        for (let row = 0; row < 2; row++) {
+            for (let i = 0; i < 6; i++) {
+                const angle = (i / 6) * Math.PI * 2;
+                const win = new THREE.Mesh(
+                    new THREE.CircleGeometry(0.15, 8),
+                    windowMat
+                );
+                win.position.set(
+                    Math.cos(angle) * 1.01,
+                    0.5 - row * 1,
+                    Math.sin(angle) * 1.01
+                );
+                win.lookAt(win.position.clone().multiplyScalar(2));
+                group.add(win);
+            }
+        }
+
+        // Side ports
+        const portGeom = new THREE.CylinderGeometry(0.3, 0.35, 0.4, 8);
+        [[1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]].forEach(([x, z]) => {
+            const port = new THREE.Mesh(portGeom, darkMat);
+            port.position.set(x, 0, z);
+            port.rotation.x = z !== 0 ? Math.PI / 2 : 0;
+            port.rotation.z = x !== 0 ? Math.PI / 2 : 0;
+            group.add(port);
+        });
+    }
+
+    buildLab(group, mainMat, darkMat, glowMat, detailMat) {
+        // Spherical main body
+        const sphereGeom = new THREE.SphereGeometry(1.2, 16, 16);
+        const sphere = new THREE.Mesh(sphereGeom, mainMat);
+        group.add(sphere);
+
+        // Equipment ring
+        const ringGeom = new THREE.TorusGeometry(1.0, 0.12, 8, 24);
+        const ring = new THREE.Mesh(ringGeom, detailMat);
+        ring.rotation.x = Math.PI / 2;
+        group.add(ring);
+
+        // Observation window
+        const windowGeom = new THREE.CircleGeometry(0.4, 16);
+        const windowMat = new THREE.MeshBasicMaterial({ color: 0x88ccff });
+        const window1 = new THREE.Mesh(windowGeom, windowMat);
+        window1.position.set(0, 0.5, 1.21);
+        window1.lookAt(0, 0.5, 2);
+        group.add(window1);
+
+        // Equipment pods
+        const podGeom = new THREE.CylinderGeometry(0.25, 0.3, 0.5, 8);
+        [[0.9, 0.6], [-0.9, 0.6], [0.9, -0.6], [-0.9, -0.6]].forEach(([x, z]) => {
+            const pod = new THREE.Mesh(podGeom, detailMat);
+            pod.position.set(x, -0.3, z);
+            group.add(pod);
+        });
+
+        // Connection ports
+        const portGeom = new THREE.CylinderGeometry(0.3, 0.35, 0.4, 8);
+        [[1.4, 0], [-1.4, 0]].forEach(([x, z]) => {
+            const port = new THREE.Mesh(portGeom, darkMat);
+            port.position.set(x, 0, z);
+            port.rotation.z = Math.PI / 2;
+            group.add(port);
+        });
+    }
+
+    buildSolar(group, mainMat, darkMat) {
+        // Central hub
+        const hubGeom = new THREE.CylinderGeometry(0.25, 0.25, 0.4, 8);
+        const hub = new THREE.Mesh(hubGeom, darkMat);
+        hub.rotation.x = Math.PI / 2;
+        group.add(hub);
+
+        // Solar panels - large and detailed
+        const panelMat = new THREE.MeshStandardMaterial({
+            color: 0x1a1a3a,
+            metalness: 0.95,
+            roughness: 0.05,
+            emissive: 0x000022,
+            emissiveIntensity: 0.2
+        });
+        
+        const frameMat = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+
+        [-1, 1].forEach(side => {
+            // Panel frame
+            const frameGroup = new THREE.Group();
+            
+            // Main panel
+            const panel = new THREE.Mesh(
+                new THREE.BoxGeometry(2.2, 0.03, 1.4),
+                panelMat
+            );
+            frameGroup.add(panel);
+            
+            // Frame borders
+            const frameGeom = new THREE.BoxGeometry(2.3, 0.06, 0.08);
+            [-0.7, 0.7].forEach(z => {
+                const frame = new THREE.Mesh(frameGeom, frameMat);
+                frame.position.z = z;
+                frameGroup.add(frame);
+            });
+            
+            const sideFrameGeom = new THREE.BoxGeometry(0.08, 0.06, 1.4);
+            [-1.15, 1.15].forEach(x => {
+                const frame = new THREE.Mesh(sideFrameGeom, frameMat);
+                frame.position.x = x;
+                frameGroup.add(frame);
+            });
+
+            // Grid lines on panel
+            const lineGeom = new THREE.BoxGeometry(2.2, 0.035, 0.02);
+            for (let i = -2; i <= 2; i++) {
+                if (i === 0) continue;
+                const line = new THREE.Mesh(lineGeom, frameMat);
+                line.position.z = i * 0.25;
+                frameGroup.add(line);
+            }
+
+            // Arm connecting to hub
+            const arm = new THREE.Mesh(
+                new THREE.BoxGeometry(0.6, 0.08, 0.08),
+                frameMat
+            );
+            arm.position.x = side * -0.8;
+            frameGroup.add(arm);
+
+            frameGroup.position.x = side * 1.7;
+            group.add(frameGroup);
+        });
+
+        // Connection point at bottom
+        const connGeom = new THREE.CylinderGeometry(0.2, 0.25, 0.3, 8);
+        const conn = new THREE.Mesh(connGeom, darkMat);
+        conn.position.y = -0.3;
+        group.add(conn);
+    }
+
+    buildStorage(group, mainMat, darkMat, detailMat) {
+        // Main container
+        const containerGeom = new THREE.BoxGeometry(1.8, 1.4, 1.4);
+        const container = new THREE.Mesh(containerGeom, mainMat);
+        group.add(container);
+
+        // Reinforcement straps
+        const strapMat = new THREE.MeshStandardMaterial({ color: 0x664422, metalness: 0.6, roughness: 0.4 });
+        const strapGeom = new THREE.BoxGeometry(0.1, 1.42, 1.42);
+        [-0.6, 0, 0.6].forEach(x => {
+            const strap = new THREE.Mesh(strapGeom, strapMat);
+            strap.position.x = x;
+            group.add(strap);
+        });
+
+        // Handles
+        const handleGeom = new THREE.BoxGeometry(0.15, 0.3, 0.1);
+        [[0.92, 0.3], [0.92, -0.3], [-0.92, 0.3], [-0.92, -0.3]].forEach(([x, y]) => {
+            const handle = new THREE.Mesh(handleGeom, detailMat);
+            handle.position.set(x, y, 0);
+            group.add(handle);
+        });
+
+        // Connection ports
+        const portGeom = new THREE.CylinderGeometry(0.25, 0.3, 0.3, 8);
+        [[1.05, 0], [-1.05, 0]].forEach(([x, z]) => {
+            const port = new THREE.Mesh(portGeom, darkMat);
+            port.position.set(x, 0, z);
+            port.rotation.z = Math.PI / 2;
+            group.add(port);
+        });
+    }
+
+    buildDock(group, mainMat, darkMat, glowMat) {
+        // Docking ring
+        const ringGeom = new THREE.TorusGeometry(0.9, 0.2, 12, 24);
+        const ring = new THREE.Mesh(ringGeom, mainMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.position.y = 0.5;
+        group.add(ring);
+
+        // Support structure
+        const supportGeom = new THREE.CylinderGeometry(0.7, 0.9, 0.8, 8);
+        const support = new THREE.Mesh(supportGeom, darkMat);
+        group.add(support);
+
+        // Guide lights
+        const lightColors = [0x00ff00, 0xff0000, 0x00ff00, 0xff0000];
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+            const light = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 8, 8),
+                new THREE.MeshBasicMaterial({ color: lightColors[i] })
+            );
+            light.position.set(
+                Math.cos(angle) * 0.9,
+                0.5,
+                Math.sin(angle) * 0.9
+            );
+            group.add(light);
+        }
+
+        // Inner guidance ring
+        const innerRing = new THREE.Mesh(
+            new THREE.TorusGeometry(0.5, 0.05, 8, 16),
+            glowMat
+        );
+        innerRing.rotation.x = Math.PI / 2;
+        innerRing.position.y = 0.5;
+        group.add(innerRing);
+
+        // Bottom connection
+        const connGeom = new THREE.CylinderGeometry(0.3, 0.35, 0.4, 8);
+        const conn = new THREE.Mesh(connGeom, darkMat);
+        conn.position.y = -0.6;
+        group.add(conn);
+    }
+
+    buildAntenna(group, mainMat, darkMat, glowMat) {
+        // Dish
+        const dishGeom = new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.5);
+        const dish = new THREE.Mesh(dishGeom, mainMat);
+        dish.rotation.x = Math.PI;
+        dish.position.y = 0.8;
+        group.add(dish);
+
+        // Dish inner surface
+        const innerDish = new THREE.Mesh(
+            new THREE.SphereGeometry(0.95, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2.5),
+            new THREE.MeshStandardMaterial({ color: 0x333344, metalness: 0.9, roughness: 0.1 })
+        );
+        innerDish.rotation.x = Math.PI;
+        innerDish.position.y = 0.8;
+        group.add(innerDish);
+
+        // Feed horn
+        const feedGeom = new THREE.ConeGeometry(0.15, 0.5, 8);
+        const feed = new THREE.Mesh(feedGeom, darkMat);
+        feed.position.y = 0.5;
+        feed.rotation.x = Math.PI;
+        group.add(feed);
+
+        // Feed support struts
+        const strutGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.8, 4);
+        for (let i = 0; i < 3; i++) {
+            const angle = (i / 3) * Math.PI * 2;
+            const strut = new THREE.Mesh(strutGeom, darkMat);
+            strut.position.set(
+                Math.cos(angle) * 0.4,
+                0.6,
+                Math.sin(angle) * 0.4
+            );
+            strut.rotation.x = 0.3;
+            strut.rotation.z = -angle + Math.PI / 2;
+            group.add(strut);
+        }
+
+        // Base/mount
+        const baseGeom = new THREE.CylinderGeometry(0.2, 0.3, 0.5, 8);
+        const base = new THREE.Mesh(baseGeom, darkMat);
+        base.position.y = -0.3;
+        group.add(base);
+
+        // Signal indicator
+        const indicator = new THREE.Mesh(
+            new THREE.SphereGeometry(0.08, 8, 8),
+            new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+        );
+        indicator.position.set(0, 0.3, 0);
+        group.add(indicator);
+    }
+
+    buildEngine(group, mainMat, darkMat) {
+        // Engine body
+        const bodyGeom = new THREE.CylinderGeometry(0.6, 0.8, 1.5, 12);
+        const body = new THREE.Mesh(bodyGeom, mainMat);
+        group.add(body);
+
+        // Nozzle
+        const nozzleGeom = new THREE.CylinderGeometry(0.5, 0.8, 1, 12, 1, true);
+        const nozzle = new THREE.Mesh(nozzleGeom, darkMat);
+        nozzle.position.y = -1.2;
+        group.add(nozzle);
+
+        // Inner nozzle glow
+        const glowGeom = new THREE.CylinderGeometry(0.45, 0.7, 0.9, 12);
+        const glowMat = new THREE.MeshBasicMaterial({
+            color: 0xff4400,
+            transparent: true,
+            opacity: 0.7
+        });
+        const glow = new THREE.Mesh(glowGeom, glowMat);
+        glow.position.y = -1.1;
+        group.add(glow);
+
+        // Exhaust plume
+        const plumeGeom = new THREE.ConeGeometry(0.6, 2, 12);
+        const plumeMat = new THREE.MeshBasicMaterial({
+            color: 0xff6600,
+            transparent: true,
+            opacity: 0.4
+        });
+        const plume = new THREE.Mesh(plumeGeom, plumeMat);
+        plume.position.y = -2.5;
+        plume.rotation.x = Math.PI;
+        group.add(plume);
+
+        // Fuel pipes
+        const pipeGeom = new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6);
+        const pipeMat = new THREE.MeshStandardMaterial({ color: 0x666666, metalness: 0.8 });
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2;
+            const pipe = new THREE.Mesh(pipeGeom, pipeMat);
+            pipe.position.set(
+                Math.cos(angle) * 0.55,
+                -0.4,
+                Math.sin(angle) * 0.55
+            );
+            group.add(pipe);
+        }
+
+        // Top mount
+        const mountGeom = new THREE.CylinderGeometry(0.3, 0.4, 0.4, 8);
+        const mount = new THREE.Mesh(mountGeom, darkMat);
+        mount.position.y = 0.95;
+        group.add(mount);
+    }
+
+    buildCorridor(group, mainMat, darkMat, detailMat) {
+        // Main tube
+        const tubeGeom = new THREE.CylinderGeometry(0.6, 0.6, 2.5, 8);
+        const tube = new THREE.Mesh(tubeGeom, mainMat);
+        tube.rotation.x = Math.PI / 2;
+        group.add(tube);
+
+        // End connectors
+        const endGeom = new THREE.CylinderGeometry(0.65, 0.55, 0.3, 8);
+        [-1.4, 1.4].forEach(z => {
+            const end = new THREE.Mesh(endGeom, detailMat);
+            end.position.z = z;
+            end.rotation.x = Math.PI / 2;
+            group.add(end);
+        });
+
+        // Support rings
+        const ringGeom = new THREE.TorusGeometry(0.62, 0.05, 8, 16);
+        [-0.7, 0, 0.7].forEach(z => {
+            const ring = new THREE.Mesh(ringGeom, detailMat);
+            ring.position.z = z;
+            group.add(ring);
+        });
+
+        // Windows
+        const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+        [-0.5, 0.5].forEach(z => {
+            const win = new THREE.Mesh(
+                new THREE.CircleGeometry(0.12, 8),
+                windowMat
+            );
+            win.position.set(0, 0.61, z);
+            win.rotation.x = -Math.PI / 2;
+            group.add(win);
+        });
+    }
+
+    buildGreenhouse(group, mainMat, glowMat) {
+        // Glass dome
+        const domeGeom = new THREE.SphereGeometry(1.1, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        const glassMat = new THREE.MeshStandardMaterial({
+            color: 0x88ff88,
+            transparent: true,
+            opacity: 0.4,
+            metalness: 0.1,
+            roughness: 0.1
+        });
+        const dome = new THREE.Mesh(domeGeom, glassMat);
+        dome.position.y = 0.2;
+        group.add(dome);
+
+        // Base
+        const baseGeom = new THREE.CylinderGeometry(1.1, 1.2, 0.4, 16);
+        const base = new THREE.Mesh(baseGeom, mainMat);
+        group.add(base);
+
+        // Plants inside (simple representation)
+        const plantMat = new THREE.MeshStandardMaterial({ color: 0x22aa22 });
+        for (let i = 0; i < 5; i++) {
+            const angle = (i / 5) * Math.PI * 2;
+            const r = 0.5;
+            const plant = new THREE.Mesh(
+                new THREE.ConeGeometry(0.15, 0.5, 6),
+                plantMat
+            );
+            plant.position.set(
+                Math.cos(angle) * r,
+                0.45,
+                Math.sin(angle) * r
+            );
+            group.add(plant);
+        }
+
+        // Center plant
+        const centerPlant = new THREE.Mesh(
+            new THREE.ConeGeometry(0.2, 0.7, 6),
+            plantMat
+        );
+        centerPlant.position.y = 0.55;
+        group.add(centerPlant);
+
+        // Growth lights
+        const lightGeom = new THREE.BoxGeometry(0.1, 0.05, 0.3);
+        const lightMat = new THREE.MeshBasicMaterial({ color: 0xff88ff });
+        for (let i = 0; i < 4; i++) {
+            const angle = (i / 4) * Math.PI * 2 + Math.PI / 4;
+            const light = new THREE.Mesh(lightGeom, lightMat);
+            light.position.set(
+                Math.cos(angle) * 0.9,
+                0.9,
+                Math.sin(angle) * 0.9
+            );
+            light.lookAt(0, 0.5, 0);
+            group.add(light);
+        }
+    }
+
+    createModuleButtons() {
+        const panel = document.getElementById('module-panel');
+        panel.innerHTML = '';
+
+        Object.keys(this.moduleData).forEach(type => {
+            const data = this.moduleData[type];
+            
+            const btn = document.createElement('button');
+            btn.className = 'module-btn' + (type === this.selectedModule ? ' selected' : '');
+            btn.dataset.module = type;
+
+            // Create preview canvas
+            const canvas = document.createElement('canvas');
+            canvas.width = 96;
+            canvas.height = 96;
+            this.renderModulePreview(type, canvas);
+
+            const name = document.createElement('span');
+            name.className = 'name';
+            name.textContent = data.name;
+
+            btn.appendChild(canvas);
+            btn.appendChild(name);
+            panel.appendChild(btn);
+
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                this.selectedModule = type;
+                this.deleteMode = false;
+                document.getElementById('delete-btn').classList.remove('active');
+                this.updateGhostModule();
+            });
+        });
+    }
+
+    renderModulePreview(type, canvas) {
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a1520);
+
+        const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+        camera.position.set(3, 2.5, 3);
+        camera.lookAt(0, 0, 0);
+
+        const ambientLight = new THREE.AmbientLight(0x606080, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(3, 4, 2);
+        scene.add(dirLight);
+
+        const module = this.createModuleMesh(type, true);
+        scene.add(module);
+
+        const renderer = new THREE.WebGLRenderer({ 
+            canvas: canvas,
+            antialias: true,
+            alpha: true
+        });
+        renderer.setSize(96, 96);
+        renderer.render(scene, camera);
+        renderer.dispose();
     }
 
     createGhostModule() {
+        if (this.ghostModule) {
+            this.scene.remove(this.ghostModule);
+        }
+        
         this.ghostModule = this.createModuleMesh(this.selectedModule);
         this.ghostModule.traverse(child => {
             if (child.material) {
                 child.material = child.material.clone();
                 child.material.transparent = true;
-                child.material.opacity = 0.5;
+                child.material.opacity = 0.4;
             }
         });
         this.ghostModule.visible = false;
         this.scene.add(this.ghostModule);
     }
 
-    createModuleMesh(type) {
-        const group = new THREE.Group();
-        
-        const materials = {
-            core: new THREE.MeshStandardMaterial({ color: 0x4488ff, metalness: 0.8, roughness: 0.2 }),
-            solar: new THREE.MeshStandardMaterial({ color: 0x2244aa, metalness: 0.9, roughness: 0.1 }),
-            habitat: new THREE.MeshStandardMaterial({ color: 0x88ff88, metalness: 0.6, roughness: 0.3 }),
-            lab: new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.7, roughness: 0.2 }),
-            storage: new THREE.MeshStandardMaterial({ color: 0xffaa44, metalness: 0.5, roughness: 0.4 }),
-            dock: new THREE.MeshStandardMaterial({ color: 0xff4444, metalness: 0.7, roughness: 0.3 }),
-            antenna: new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9, roughness: 0.1 }),
-            engine: new THREE.MeshStandardMaterial({ color: 0xff6600, metalness: 0.8, roughness: 0.2 })
-        };
-
-        const mat = materials[type] || materials.core;
-
-        switch(type) {
-            case 'core':
-                // Main cylinder
-                const coreBody = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.8, 0.8, 1.5, 8),
-                    mat
-                );
-                coreBody.rotation.x = Math.PI / 2;
-                coreBody.castShadow = true;
-                group.add(coreBody);
-                
-                // Connection ports
-                const portGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.3, 6);
-                [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]].forEach(pos => {
-                    const port = new THREE.Mesh(portGeom, mat);
-                    port.position.set(pos[0] * 0.9, pos[1], pos[2] * 0.9);
-                    port.rotation.z = Math.PI / 2;
-                    if (pos[2] !== 0) port.rotation.y = Math.PI / 2;
-                    group.add(port);
-                });
-                break;
-
-            case 'solar':
-                // Panel support
-                const support = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.2, 0.2, 1.8),
-                    mat
-                );
-                support.castShadow = true;
-                group.add(support);
-                
-                // Solar panels
-                const panelMat = new THREE.MeshStandardMaterial({
-                    color: 0x1a1a44,
-                    metalness: 0.9,
-                    roughness: 0.1,
-                    emissive: 0x000033,
-                    emissiveIntensity: 0.3
-                });
-                [-1, 1].forEach(side => {
-                    const panel = new THREE.Mesh(
-                        new THREE.BoxGeometry(1.5, 0.05, 1.5),
-                        panelMat
-                    );
-                    panel.position.x = side * 0.85;
-                    panel.castShadow = true;
-                    group.add(panel);
-                });
-                break;
-
-            case 'habitat':
-                // Main module
-                const habBody = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.7, 0.7, 2, 8),
-                    mat
-                );
-                habBody.rotation.x = Math.PI / 2;
-                habBody.castShadow = true;
-                group.add(habBody);
-                
-                // Windows
-                const windowMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
-                for (let i = 0; i < 4; i++) {
-                    const win = new THREE.Mesh(
-                        new THREE.CircleGeometry(0.15, 8),
-                        windowMat
-                    );
-                    win.position.set(
-                        Math.cos(i * Math.PI / 2) * 0.71,
-                        0,
-                        Math.sin(i * Math.PI / 2) * 0.71
-                    );
-                    win.lookAt(win.position.clone().multiplyScalar(2));
-                    group.add(win);
-                }
-                break;
-
-            case 'lab':
-                // Spherical lab
-                const labSphere = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.8, 16, 16),
-                    mat
-                );
-                labSphere.castShadow = true;
-                group.add(labSphere);
-                
-                // Equipment
-                const equipMat = new THREE.MeshStandardMaterial({ color: 0x44aaff, emissive: 0x0044aa, emissiveIntensity: 0.5 });
-                const equip = new THREE.Mesh(
-                    new THREE.TorusGeometry(0.5, 0.1, 8, 16),
-                    equipMat
-                );
-                equip.rotation.x = Math.PI / 2;
-                group.add(equip);
-                break;
-
-            case 'storage':
-                // Cargo container
-                const cargo = new THREE.Mesh(
-                    new THREE.BoxGeometry(1.5, 1, 1),
-                    mat
-                );
-                cargo.castShadow = true;
-                group.add(cargo);
-                
-                // Details
-                const detailMat = new THREE.MeshStandardMaterial({ color: 0x886633 });
-                [[-0.5, 0], [0.5, 0]].forEach(pos => {
-                    const detail = new THREE.Mesh(
-                        new THREE.BoxGeometry(0.4, 1.02, 0.1),
-                        detailMat
-                    );
-                    detail.position.set(pos[0], 0, 0.5);
-                    group.add(detail);
-                });
-                break;
-
-            case 'dock':
-                // Docking port
-                const dockRing = new THREE.Mesh(
-                    new THREE.TorusGeometry(0.6, 0.15, 8, 16),
-                    mat
-                );
-                dockRing.rotation.x = Math.PI / 2;
-                dockRing.castShadow = true;
-                group.add(dockRing);
-                
-                // Support structure
-                const dockSupport = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.4, 0.6, 0.8, 8),
-                    mat
-                );
-                dockSupport.position.y = -0.4;
-                dockSupport.castShadow = true;
-                group.add(dockSupport);
-                
-                // Lights
-                const lightMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-                for (let i = 0; i < 4; i++) {
-                    const light = new THREE.Mesh(
-                        new THREE.SphereGeometry(0.08, 8, 8),
-                        lightMat
-                    );
-                    light.position.set(
-                        Math.cos(i * Math.PI / 2) * 0.6,
-                        0,
-                        Math.sin(i * Math.PI / 2) * 0.6
-                    );
-                    group.add(light);
-                }
-                break;
-
-            case 'antenna':
-                // Dish
-                const dish = new THREE.Mesh(
-                    new THREE.SphereGeometry(0.8, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
-                    mat
-                );
-                dish.rotation.x = Math.PI;
-                dish.position.y = 0.5;
-                dish.castShadow = true;
-                group.add(dish);
-                
-                // Support
-                const antSupport = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.1, 0.15, 1, 6),
-                    mat
-                );
-                antSupport.position.y = -0.2;
-                group.add(antSupport);
-                
-                // Feed
-                const feed = new THREE.Mesh(
-                    new THREE.ConeGeometry(0.1, 0.4, 6),
-                    new THREE.MeshBasicMaterial({ color: 0xff0000 })
-                );
-                feed.position.y = 0.3;
-                feed.rotation.x = Math.PI;
-                group.add(feed);
-                break;
-
-            case 'engine':
-                // Engine body
-                const engBody = new THREE.Mesh(
-                    new THREE.CylinderGeometry(0.5, 0.7, 1.2, 8),
-                    mat
-                );
-                engBody.castShadow = true;
-                group.add(engBody);
-                
-                // Nozzle
-                const nozzle = new THREE.Mesh(
-                    new THREE.ConeGeometry(0.6, 0.8, 8, 1, true),
-                    new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.9 })
-                );
-                nozzle.position.y = -0.9;
-                nozzle.rotation.x = Math.PI;
-                group.add(nozzle);
-                
-                // Glow
-                const glowMat = new THREE.MeshBasicMaterial({
-                    color: 0xff4400,
-                    transparent: true,
-                    opacity: 0.6
-                });
-                const glow = new THREE.Mesh(
-                    new THREE.ConeGeometry(0.4, 1.5, 8),
-                    glowMat
-                );
-                glow.position.y = -1.8;
-                glow.rotation.x = Math.PI;
-                group.add(glow);
-                break;
-        }
-
-        group.userData.type = type;
-        return group;
+    updateGhostModule() {
+        this.createGhostModule();
     }
 
     updateCamera() {
-        const x = Math.sin(this.cameraAngle) * this.cameraDistance;
-        const z = Math.cos(this.cameraAngle) * this.cameraDistance;
-        this.camera.position.set(x, this.cameraHeight, z);
+        const x = Math.sin(this.cameraAngle) * Math.cos(this.cameraPitch) * this.cameraDistance;
+        const y = Math.sin(this.cameraPitch) * this.cameraDistance;
+        const z = Math.cos(this.cameraAngle) * Math.cos(this.cameraPitch) * this.cameraDistance;
+        this.camera.position.set(x, y, z);
         this.camera.lookAt(0, 0, 0);
     }
 
     setupEvents() {
-        // Touch events
         const canvas = this.renderer.domElement;
 
         canvas.addEventListener('touchstart', (e) => this.onTouchStart(e), { passive: false });
         canvas.addEventListener('touchmove', (e) => this.onTouchMove(e), { passive: false });
         canvas.addEventListener('touchend', (e) => this.onTouchEnd(e), { passive: false });
 
-        // Mouse events (for testing on desktop)
-        canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
         canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
         canvas.addEventListener('click', (e) => this.onClick(e));
         canvas.addEventListener('dblclick', (e) => this.onDoubleClick(e));
 
-        // Module selection
-        document.querySelectorAll('.module-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.module-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                this.selectedModule = btn.dataset.module;
-                this.updateGhostModule();
-            });
-        });
-
-        // Rotate buttons
+        // Control buttons
         document.getElementById('rotate-left').addEventListener('click', () => {
-            this.cameraAngle -= 0.3;
+            this.cameraAngle -= 0.25;
             this.updateCamera();
         });
-
         document.getElementById('rotate-right').addEventListener('click', () => {
-            this.cameraAngle += 0.3;
+            this.cameraAngle += 0.25;
+            this.updateCamera();
+        });
+        document.getElementById('rotate-up').addEventListener('click', () => {
+            this.cameraPitch = Math.min(1.2, this.cameraPitch + 0.15);
+            this.updateCamera();
+        });
+        document.getElementById('rotate-down').addEventListener('click', () => {
+            this.cameraPitch = Math.max(0.1, this.cameraPitch - 0.15);
             this.updateCamera();
         });
 
-        // Delete button
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            this.cameraDistance = Math.max(15, this.cameraDistance - 5);
+            this.updateCamera();
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            this.cameraDistance = Math.min(60, this.cameraDistance + 5);
+            this.updateCamera();
+        });
+
         document.getElementById('delete-btn').addEventListener('click', () => {
             this.deleteMode = !this.deleteMode;
             document.getElementById('delete-btn').classList.toggle('active', this.deleteMode);
+            this.ghostModule.visible = false;
         });
 
-        // Zoom buttons
-        document.getElementById('zoom-in').addEventListener('click', () => {
-            this.cameraDistance = Math.max(15, this.cameraDistance - 5);
-            this.cameraHeight = Math.max(10, this.cameraHeight - 3);
-            this.updateCamera();
-        });
-
-        document.getElementById('zoom-out').addEventListener('click', () => {
-            this.cameraDistance = Math.min(60, this.cameraDistance + 5);
-            this.cameraHeight = Math.min(40, this.cameraHeight + 3);
-            this.updateCamera();
-        });
-
-        // Resize
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
@@ -484,6 +899,7 @@ class SpaceStationBuilder {
 
     lastTouchTime = 0;
     touchStartPos = null;
+    lastPinchDist = null;
 
     onTouchStart(e) {
         e.preventDefault();
@@ -496,27 +912,28 @@ class SpaceStationBuilder {
         e.preventDefault();
         if (e.touches.length === 1 && this.touchStartPos) {
             const deltaX = e.touches[0].clientX - this.touchStartPos.x;
-            if (Math.abs(deltaX) > 30) {
-                this.cameraAngle += deltaX * 0.002;
+            const deltaY = e.touches[0].clientY - this.touchStartPos.y;
+            
+            if (Math.abs(deltaX) > 15 || Math.abs(deltaY) > 15) {
+                this.cameraAngle += deltaX * 0.003;
+                this.cameraPitch = Math.max(0.1, Math.min(1.2, this.cameraPitch + deltaY * 0.002));
                 this.updateCamera();
                 this.touchStartPos.x = e.touches[0].clientX;
+                this.touchStartPos.y = e.touches[0].clientY;
             }
         } else if (e.touches.length === 2) {
-            // Pinch zoom
             const dist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
             if (this.lastPinchDist) {
                 const delta = this.lastPinchDist - dist;
-                this.cameraDistance = Math.max(15, Math.min(60, this.cameraDistance + delta * 0.1));
-                this.cameraHeight = Math.max(10, Math.min(40, this.cameraHeight + delta * 0.05));
+                this.cameraDistance = Math.max(15, Math.min(60, this.cameraDistance + delta * 0.15));
                 this.updateCamera();
             }
             this.lastPinchDist = dist;
         }
 
-        // Update ghost position
         if (e.touches.length === 1) {
             this.updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
             this.updateGhostPosition();
@@ -535,14 +952,12 @@ class SpaceStationBuilder {
             const endY = e.changedTouches[0].clientY;
             const moveDistance = Math.hypot(endX - this.touchStartPos.x, endY - this.touchStartPos.y);
 
-            if (moveDistance < 20) {
+            if (moveDistance < 15) {
                 this.updateMousePosition(endX, endY);
                 
                 if (timeDiff < 300) {
-                    // Double tap - delete
                     this.deleteModuleAtPosition();
                 } else {
-                    // Single tap - place
                     if (this.deleteMode) {
                         this.deleteModuleAtPosition();
                     } else {
@@ -554,10 +969,6 @@ class SpaceStationBuilder {
 
         this.lastTouchTime = now;
         this.touchStartPos = null;
-    }
-
-    onMouseDown(e) {
-        // For desktop dragging
     }
 
     onMouseMove(e) {
@@ -593,7 +1004,6 @@ class SpaceStationBuilder {
             const gridX = Math.round(point.x);
             const gridZ = Math.round(point.z);
             
-            // Check bounds
             const limit = this.gridSize / 2 - 1;
             if (Math.abs(gridX) <= limit && Math.abs(gridZ) <= limit) {
                 return { x: gridX, z: gridZ };
@@ -602,18 +1012,79 @@ class SpaceStationBuilder {
         return null;
     }
 
+    findAttachmentPoint() {
+        // For attachable modules, find nearby modules to attach to
+        const data = this.moduleData[this.selectedModule];
+        if (!data.attachable) return null;
+
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        
+        const meshes = [];
+        this.modules.forEach(m => {
+            m.traverse(child => {
+                if (child.isMesh) meshes.push(child);
+            });
+        });
+
+        const intersects = this.raycaster.intersectObjects(meshes);
+        if (intersects.length > 0) {
+            const hit = intersects[0];
+            const parentModule = this.findParentModule(hit.object);
+            if (parentModule) {
+                // Calculate attachment position on top or side of the module
+                const normal = hit.face.normal.clone();
+                normal.transformDirection(hit.object.matrixWorld);
+                
+                const attachPos = hit.point.clone();
+                attachPos.add(normal.multiplyScalar(0.5));
+                
+                return {
+                    position: attachPos,
+                    parentModule: parentModule
+                };
+            }
+        }
+        return null;
+    }
+
+    findParentModule(mesh) {
+        let current = mesh;
+        while (current) {
+            if (current.userData && current.userData.type) {
+                return current;
+            }
+            current = current.parent;
+        }
+        return null;
+    }
+
     updateGhostPosition() {
+        if (this.deleteMode) {
+            this.ghostModule.visible = false;
+            return;
+        }
+
+        const data = this.moduleData[this.selectedModule];
+        
+        if (data.attachable) {
+            const attachment = this.findAttachmentPoint();
+            if (attachment) {
+                this.ghostModule.position.copy(attachment.position);
+                this.ghostModule.visible = true;
+                return;
+            }
+        }
+
         const pos = this.getGridPosition();
-        if (pos && !this.deleteMode) {
+        if (pos) {
             this.ghostModule.position.set(pos.x, 0, pos.z);
             this.ghostModule.visible = true;
             
-            // Color based on availability
             const key = `${pos.x},${pos.z}`;
             const canPlace = !this.grid[key];
             this.ghostModule.traverse(child => {
-                if (child.material) {
-                    child.material.opacity = canPlace ? 0.5 : 0.2;
+                if (child.material && child.material.opacity !== undefined) {
+                    child.material.opacity = canPlace ? 0.4 : 0.15;
                 }
             });
         } else {
@@ -621,26 +1092,28 @@ class SpaceStationBuilder {
         }
     }
 
-    updateGhostModule() {
-        this.scene.remove(this.ghostModule);
-        this.ghostModule = this.createModuleMesh(this.selectedModule);
-        this.ghostModule.traverse(child => {
-            if (child.material) {
-                child.material = child.material.clone();
-                child.material.transparent = true;
-                child.material.opacity = 0.5;
-            }
-        });
-        this.ghostModule.visible = false;
-        this.scene.add(this.ghostModule);
-    }
-
     placeModule() {
+        const data = this.moduleData[this.selectedModule];
+        
+        if (data.attachable) {
+            const attachment = this.findAttachmentPoint();
+            if (attachment) {
+                const module = this.createModuleMesh(this.selectedModule);
+                module.position.copy(attachment.position);
+                
+                this.scene.add(module);
+                this.modules.push(module);
+                this.updateStats();
+                this.animateScale(module, 1);
+                return;
+            }
+        }
+
         const pos = this.getGridPosition();
         if (!pos) return;
 
         const key = `${pos.x},${pos.z}`;
-        if (this.grid[key]) return; // Already occupied
+        if (this.grid[key]) return;
 
         const module = this.createModuleMesh(this.selectedModule);
         module.position.set(pos.x, 0, pos.z);
@@ -651,38 +1124,46 @@ class SpaceStationBuilder {
         this.grid[key] = module;
 
         this.updateStats();
-
-        // Animation
-        module.scale.set(0, 0, 0);
         this.animateScale(module, 1);
     }
 
     deleteModuleAtPosition() {
-        const pos = this.getGridPosition();
-        if (!pos) return;
-
-        const key = `${pos.x},${pos.z}`;
-        const module = this.grid[key];
+        this.raycaster.setFromCamera(this.mouse, this.camera);
         
-        if (module) {
-            this.animateScale(module, 0, () => {
-                this.scene.remove(module);
-                this.modules = this.modules.filter(m => m !== module);
-                delete this.grid[key];
-                this.updateStats();
+        const meshes = [];
+        this.modules.forEach(m => {
+            m.traverse(child => {
+                if (child.isMesh) meshes.push(child);
             });
+        });
+
+        const intersects = this.raycaster.intersectObjects(meshes);
+        if (intersects.length > 0) {
+            const parentModule = this.findParentModule(intersects[0].object);
+            if (parentModule) {
+                this.animateScale(parentModule, 0, () => {
+                    this.scene.remove(parentModule);
+                    this.modules = this.modules.filter(m => m !== parentModule);
+                    if (parentModule.userData.gridKey) {
+                        delete this.grid[parentModule.userData.gridKey];
+                    }
+                    this.updateStats();
+                });
+            }
         }
     }
 
     animateScale(obj, targetScale, callback) {
         const startScale = obj.scale.x;
-        const duration = 200;
+        const duration = 250;
         const startTime = Date.now();
 
         const animate = () => {
             const elapsed = Date.now() - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            const eased = 1 - Math.pow(1 - progress, 3);
+            const eased = targetScale > startScale 
+                ? 1 - Math.pow(1 - progress, 3)
+                : progress * progress;
             
             const scale = startScale + (targetScale - startScale) * eased;
             obj.scale.set(scale, scale, scale);
@@ -693,6 +1174,10 @@ class SpaceStationBuilder {
                 callback();
             }
         };
+        
+        if (targetScale > 0) {
+            obj.scale.set(0.01, 0.01, 0.01);
+        }
         animate();
     }
 
@@ -701,43 +1186,48 @@ class SpaceStationBuilder {
         let totalCrew = 0;
 
         this.modules.forEach(module => {
-            const stats = this.moduleStats[module.userData.type];
-            if (stats) {
-                totalEnergy += stats.energy;
-                totalCrew += stats.crew;
+            const data = this.moduleData[module.userData.type];
+            if (data) {
+                totalEnergy += data.energy;
+                totalCrew += data.crew;
             }
         });
 
         document.getElementById('module-count').textContent = this.modules.length;
-        document.getElementById('energy').textContent = totalEnergy;
-        document.getElementById('crew').textContent = totalCrew;
-
-        // Color energy display
+        
         const energyEl = document.getElementById('energy');
-        energyEl.style.color = totalEnergy >= 0 ? '#0f0' : '#f44';
+        energyEl.textContent = (totalEnergy >= 0 ? '+' : '') + totalEnergy;
+        energyEl.className = 'value ' + (totalEnergy >= 0 ? 'energy-positive' : 'energy-negative');
+        
+        document.getElementById('crew').textContent = totalCrew;
     }
 
     animate() {
         requestAnimationFrame(() => this.animate());
 
-        // Rotate stars slowly
+        const time = Date.now() * 0.001;
+
         if (this.stars) {
-            this.stars.rotation.y += 0.0001;
+            this.stars.rotation.y += 0.00005;
+        }
+
+        if (this.clouds) {
+            this.clouds.rotation.y += 0.0001;
+        }
+
+        if (this.earth) {
+            this.earth.rotation.y += 0.00003;
         }
 
         // Animate modules
         this.modules.forEach((module, i) => {
-            // Gentle floating
-            module.position.y = Math.sin(Date.now() * 0.001 + i) * 0.05;
+            module.position.y = (module.userData.gridKey ? 0 : module.position.y) + Math.sin(time + i * 0.5) * 0.03;
             
-            // Solar panels rotation
-            if (module.userData.type === 'solar') {
-                module.rotation.y = Math.sin(Date.now() * 0.0005) * 0.2;
-            }
-            
-            // Antenna rotation
             if (module.userData.type === 'antenna') {
-                module.rotation.y += 0.01;
+                module.children[0].rotation.y = time * 0.5;
+            }
+            if (module.userData.type === 'solar') {
+                module.rotation.y = Math.sin(time * 0.2) * 0.15;
             }
         });
 
@@ -745,7 +1235,6 @@ class SpaceStationBuilder {
     }
 }
 
-// Start
 window.addEventListener('load', () => {
     new SpaceStationBuilder();
 });
