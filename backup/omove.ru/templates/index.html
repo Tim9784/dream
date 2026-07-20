@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>{{ site_title }}</title>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+    window.dataLayer = window.dataLayer || [];
+    (function(m,e,t,r,i,k,a){
+        m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+        m[i].l=1*new Date();
+        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+    })(window, document,'script','https://mc.yandex.ru/metrika/tag.js?id=110798358', 'ym');
+
+    ym(110798358, 'init', {webvisor:true, clickmap:true, ecommerce:"dataLayer", accurateTrackBounce:true, trackLinks:true});
+</script>
+<!-- /Yandex.Metrika counter -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css?v=20260717h">
+<script>
+(function(){
+  try{
+    var t=localStorage.getItem('seabattle-theme');
+    if(t!=='light'&&t!=='dark'){
+      t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  }catch(e){ document.documentElement.setAttribute('data-theme','dark'); }
+  // блок pinch + double-tap zoom
+  ['gesturestart','gesturechange','gestureend'].forEach(function(ev){
+    document.addEventListener(ev, function(e){ e.preventDefault(); }, {passive:false});
+  });
+  var lastTouchEnd = 0;
+  document.addEventListener('touchend', function(e){
+    var el = e.target;
+    if(el && (el.closest && el.closest('input,textarea'))) return;
+    var now = Date.now();
+    if(now - lastTouchEnd <= 350) e.preventDefault();
+    lastTouchEnd = now;
+  }, {passive:false});
+  document.addEventListener('dblclick', function(e){
+    var el = e.target;
+    if(el && (el.closest && el.closest('input,textarea'))) return;
+    e.preventDefault();
+  }, {passive:false});
+})();
+</script>
+</head>
+<body>
+<!-- Yandex.Metrika counter (noscript) -->
+<noscript><div><img src="https://mc.yandex.ru/watch/110798358" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
+<!-- /Yandex.Metrika counter -->
+<div class="wrap">
+  <div class="header-row">
+    <div>
+      <h1 class="brand">{{ site_title }}</h1>
+      <p class="tag">Выбери игру — создай комнату или зайди по коду.</p>
+    </div>
+    <button type="button" class="theme-btn" id="btnTheme">Тема</button>
+  </div>
+
+  <section id="home" class="panel">
+    <h2 class="section-title">Игры</h2>
+    <div class="game-grid" id="gameGrid"></div>
+    <p class="hint">Нажми на игру, чтобы начать</p>
+    <div class="err" id="homeErr"></div>
+  </section>
+
+  <section id="setup" class="panel hidden">
+    <div class="topbar">
+      <strong id="setupTitle">Игра</strong>
+      <button class="btn danger" id="btnSetupBack">Назад</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label><span id="nameLabel">Твоё имя</span><input id="name" type="text" maxlength="20" value="" placeholder="Лиса" autocomplete="nickname"></label>
+      <label id="name2Wrap" class="hidden"><span>Имя второго</span><input id="name2" type="text" maxlength="20" value="" placeholder="Волк" autocomplete="nickname"></label>
+    </div>
+
+    <div id="seabattleOpts" class="hidden" style="margin-top:14px">
+      <span class="field-label" style="font-size:.9rem">Размер поля</span>
+      <div class="size-pick" id="sizePick">
+        <button type="button" class="size-btn" data-size="small"><strong>Маленькое</strong><small>8×8 · 6 кораблей</small></button>
+        <button type="button" class="size-btn active" data-size="medium"><strong>Среднее</strong><small>10×10 · 10 кораблей</small></button>
+        <button type="button" class="size-btn" data-size="large"><strong>Большое</strong><small>12×12 · 12 кораблей</small></button>
+      </div>
+    </div>
+
+    <div id="durakOpts" class="hidden" style="margin-top:14px">
+      <span class="field-label" id="playersOptsTitle" style="font-size:.9rem">Игроков за столом (по сети)</span>
+      <div class="size-pick" id="playersPick">
+        <button type="button" class="size-btn active" data-players="2"><strong>2</strong><small>Классика</small></button>
+        <button type="button" class="size-btn" data-players="3"><strong>3</strong><small>Компания</small></button>
+        <button type="button" class="size-btn" data-players="4"><strong>4</strong><small>Полный стол</small></button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:18px">
+      <button class="btn" id="btnCreate">По сети</button>
+      <button class="btn" id="btnLocal">Вдвоём здесь</button>
+      <button class="btn ghost" id="btnVsAi">С роботом</button>
+    </div>
+    <p class="hint" id="localHint" style="text-align:left;margin-top:10px">«Вдвоём здесь» — передаёте одно устройство друг другу.</p>
+
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h2 class="section-title">Есть код друга?</h2>
+    <div class="row">
+      <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" autocomplete="off"></label>
+      <button class="btn ghost" id="btnJoin" style="margin-top:22px">Войти</button>
+    </div>
+    <div class="err" id="setupErr"></div>
+  </section>
+
+  <section id="lobby" class="panel hidden">
+    <div class="topbar">
+      <strong id="lobbyGame">Игра</strong>
+      <button class="btn danger" id="btnExitLobby">Выход</button>
+    </div>
+    <div class="hint">Код для друга</div>
+    <div class="code-big" id="codeView">------</div>
+    <div class="share-row">
+      <button type="button" class="btn" id="btnShare">Поделиться</button>
+    </div>
+    <div class="hint" id="shareHint" aria-live="polite"></div>
+    <div class="hint" id="lobbyHint">Ждём второго игрока…</div>
+    <div class="lobby-players" id="lobbyPlayers" aria-live="polite"></div>
+    <div class="start-row hidden" id="startRow">
+      <button type="button" class="btn" id="btnStartGame">Начать игру</button>
+    </div>
+    <div class="wait-host hidden" id="waitHostHint">Ждём организатора…</div>
+    <div class="err" id="lobbyErr"></div>
+  </section>
+
+  <section id="playing" class="hidden">
+    <div class="panel">
+      <div class="topbar">
+        <strong id="playTitle">Игра</strong>
+        <button class="btn danger" id="btnExitPlay">Выход</button>
+      </div>
+      <div class="status" id="playStatus">…</div>
+      <div class="game-stage">
+        <div class="win-chance hidden" id="winChance" title="Шанс победы">
+          <span id="winChancePct">—</span>
+        </div>
+        <div id="gameMount"></div>
+      </div>
+      <div class="err" id="playErr"></div>
+    </div>
+  </section>
+
+  <section id="done" class="panel hidden">
+    <div class="status" id="doneStatus">Игра окончена</div>
+    <div class="row" style="justify-content:center;margin-top:14px">
+      <button class="btn" id="btnReplay">Играть заново</button>
+      <button class="btn ghost" id="btnAgain">В меню</button>
+    </div>
+  </section>
+</div>
+<script src="/static/app.js?v=20260717h"></script>
+</body>
+</html>
