@@ -284,6 +284,33 @@ def empty_slot(room: dict[str, Any]) -> str | None:
     return None
 
 
+def _promote_lobby_host(room: dict[str, Any]) -> None:
+    """Если p1 вышел из лобби — передать организатора следующему игроку."""
+    players = room.get("players") or {}
+    if players.get("p1"):
+        return
+    max_p = int(room.get("max_players") or 2)
+    for s in SLOTS[1:max_p]:
+        if players.get(s):
+            players["p1"] = players[s]
+            players[s] = None
+            return
+
+
+def _lobby_status_message(room: dict[str, Any]) -> str:
+    max_p = int(room.get("max_players") or 2)
+    filled = len(filled_slots(room))
+    names = [
+        p["name"]
+        for s in SLOTS[:max_p]
+        for p in [(room.get("players") or {}).get(s)]
+        if p
+    ]
+    if seats_ready(room):
+        return f"Все на месте · организатор может начать · {filled}/{max_p}"
+    return f"В лобби: {', '.join(names)} · ждём игроков… {filled}/{max_p}"
+
+
 def max_players_for(game_id: str, data: dict[str, Any] | None = None) -> int:
     data = data or {}
     if game_id in ("durak", "blik"):
@@ -1038,6 +1065,8 @@ def room_action(code: str):
         return jsonify({"ok": False, "error": err}), 400
 
     maybe_schedule_ai(room)
+    if room.get("vs_ai"):
+        run_ai_turns(room)
     if (not was_done) and room.get("phase") == "done":
         mark_game_finished(room)
     save_room(code, room)
@@ -1111,8 +1140,18 @@ def leave_room(code: str):
 
     leaver = room["players"][slot]["name"]
 
-    if room["phase"] == "lobby" or room.get("vs_ai") or room.get("vs_local"):
+    if room.get("vs_ai") or room.get("vs_local"):
         delete_room(code)
+        return jsonify({"ok": True, "left": True})
+
+    if room["phase"] == "lobby":
+        room["players"][slot] = None
+        _promote_lobby_host(room)
+        if not filled_slots(room):
+            delete_room(code)
+            return jsonify({"ok": True, "left": True})
+        room["message"] = _lobby_status_message(room)
+        save_room(code, room)
         return jsonify({"ok": True, "left": True})
 
     if room["phase"] in ("placing", "playing", "done"):

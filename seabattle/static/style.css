@@ -608,10 +608,17 @@ html[data-theme="light"] .coord.on-dark{color:rgba(250,250,250,.78)}
 }
 html[data-theme="light"] .durak-table{background:rgba(0,0,0,.04)}
 .durak-empty{color:var(--soft);font-size:.9rem}
-.dpair{position:relative;width:78px;height:100px}
-.dpair .dcard{position:absolute;left:0;top:0}
-.dpair .dcard.beat{left:18px;top:22px;z-index:2;transform:rotate(12deg)}
-.dpair .dcard.ghost{left:18px;top:22px;opacity:.35;border-style:dashed}
+.dpair{position:relative;width:92px;height:108px}
+.dpair .dcard.attack{position:absolute;left:0;top:8px;z-index:1}
+.dpair .dcard.beat{left:28px;top:0;z-index:2;transform:rotate(10deg)}
+.dpair .dcard.ghost{left:28px;top:0;opacity:.35;border-style:dashed}
+.dpair-suit{
+  position:absolute;left:4px;bottom:2px;z-index:3;
+  font-size:1.35rem;font-weight:800;line-height:1;
+  text-shadow:0 0 4px var(--bg),0 0 2px var(--bg);
+  pointer-events:none;
+}
+.dpair-suit.red{color:#dc2626}
 .dcard{
   width:60px;height:84px;border-radius:10px;border:1px solid rgba(24,24,27,.25);
   background:linear-gradient(165deg,#fffef8,#e8e2d4);color:#18181b;
@@ -726,7 +733,7 @@ html[data-theme="light"] .handover{background:rgba(0,0,0,.04)}
   .bg-point{min-height:120px}
   .checker{width:30px;height:30px;min-width:30px;min-height:30px;flex-basis:30px}
   .dcard{width:52px;height:74px;font-size:.95rem}
-  .dpair{width:68px;height:90px}
+  .dpair{width:80px;height:96px}
   .game-card{padding:14px}
 }
 
