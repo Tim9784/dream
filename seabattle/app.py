@@ -353,6 +353,11 @@ def restart_game_room(room: dict[str, Any]) -> None:
     if room["game"] in ("durak", "blik"):
         options["players"] = int(room.get("max_players") or 2)
         options["max_players"] = options["players"]
+    if hasattr(mod, "rematch_options"):
+        try:
+            options.update(mod.rematch_options(room) or {})
+        except Exception:
+            pass
     room["state"] = mod.init_state(options)
     room["turn"] = None
     room["ai_due"] = None

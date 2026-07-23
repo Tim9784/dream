@@ -315,6 +315,18 @@ html[data-theme="light"] .lobby-player.me{background:rgba(0,0,0,.04);border:1px 
 .hangman-info{min-width:220px}
 .hangman-word{font-family:'Syne',sans-serif;letter-spacing:.4em;font-size:1.6rem;text-align:center}
 .hangman-tries{color:var(--soft);text-align:center;margin-top:6px}
+.hangman-role{color:var(--soft);text-align:center;font-size:.9rem;margin-bottom:8px}
+.hangman-secret{margin-top:10px;text-align:center;color:var(--soft);font-size:.92rem}
+.hangman-pick{
+  display:flex;flex-direction:column;align-items:center;gap:12px;
+  max-width:360px;margin:8px auto 0;text-align:center;
+}
+.hangman-word-label{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left}
+.hangman-word-label span{color:var(--label);font-size:.88rem}
+.hangman-word-label input{
+  width:100%;font-size:1.25rem;letter-spacing:.12em;text-transform:uppercase;
+  text-align:center;font-family:'Syne',sans-serif;
+}
 .kb{display:grid;grid-template-columns:repeat(11,1fr);gap:6px;max-width:660px;margin:0 auto}
 .kb-btn{
   padding:8px;border:1px solid var(--line);background:var(--chip);border-radius:10px;
