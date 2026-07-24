@@ -417,6 +417,13 @@ class LifeSimulator {
     createApartment() {
         this.apartmentGroup = new THREE.Group();
         this.apartmentGroup.visible = false;
+        
+        // Initialize colliders array first
+        this.apartmentColliders = [
+            { minX: -7.6, maxX: -7.4, minZ: -6, maxZ: 6 }, // left wall
+            { minX: 7.4, maxX: 7.6, minZ: -6, maxZ: 6 },   // right wall
+            { minX: -7.5, maxX: 7.5, minZ: -6.1, maxZ: -5.9 }, // back wall
+        ];
 
         // Floor
         const floor = new THREE.Mesh(
@@ -462,13 +469,6 @@ class LifeSimulator {
         this.createFurniture();
 
         this.scene.add(this.apartmentGroup);
-
-        // Apartment colliders
-        this.apartmentColliders = [
-            { minX: -7.6, maxX: -7.4, minZ: -6, maxZ: 6 }, // left wall
-            { minX: 7.4, maxX: 7.6, minZ: -6, maxZ: 6 },   // right wall
-            { minX: -7.5, maxX: 7.5, minZ: -6.1, maxZ: -5.9 }, // back wall
-        ];
     }
 
     createFurniture() {
