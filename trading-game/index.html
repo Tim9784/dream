@@ -3,14 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>💰 Trading City</title>
+    <title>🏠 Life Simulator</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             overflow: hidden;
             background: #000;
@@ -19,61 +14,47 @@
             -webkit-user-select: none;
             touch-action: none;
         }
-
-        #game {
-            width: 100vw;
-            height: 100vh;
-            position: relative;
-        }
+        #game { width: 100vw; height: 100vh; position: relative; }
 
         /* HUD */
         #hud {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 12px;
+            top: 10px;
+            left: 10px;
+            right: 10px;
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
             pointer-events: none;
             z-index: 100;
         }
-
-        #balance-panel {
+        #stats-panel {
             background: linear-gradient(135deg, rgba(20, 30, 50, 0.95), rgba(10, 20, 40, 0.95));
             padding: 12px 16px;
             border-radius: 12px;
             border: 1px solid rgba(100, 200, 255, 0.3);
             color: #fff;
-            min-width: 140px;
+            min-width: 150px;
         }
+        .stat-row { display: flex; justify-content: space-between; align-items: center; margin: 5px 0; font-size: 13px; }
+        .stat-label { color: rgba(255,255,255,0.6); }
+        .stat-bar { width: 60px; height: 8px; background: rgba(0,0,0,0.5); border-radius: 4px; overflow: hidden; }
+        .stat-fill { height: 100%; transition: width 0.3s; }
+        .stat-fill.energy { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+        .stat-fill.hunger { background: linear-gradient(90deg, #4ade80, #22c55e); }
+        .stat-fill.happiness { background: linear-gradient(90deg, #f472b6, #ec4899); }
+        #balance-display { font-size: 18px; font-weight: 700; color: #4ade80; margin-top: 8px; }
 
-        #balance-panel .label {
-            font-size: 10px;
-            color: rgba(255,255,255,0.6);
-            text-transform: uppercase;
-        }
-
-        #balance-panel .value {
-            font-size: 20px;
-            font-weight: 700;
-            color: #4ade80;
-        }
-
-        #portfolio-btn {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            border: none;
-            padding: 12px 20px;
-            border-radius: 12px;
+        #time-display {
+            background: rgba(0,0,0,0.7);
+            padding: 8px 16px;
+            border-radius: 20px;
             color: white;
             font-size: 14px;
-            font-weight: 600;
             pointer-events: auto;
-            cursor: pointer;
         }
 
-        /* Joystick */
+        /* Controls */
         #joystick-zone {
             position: absolute;
             bottom: 30px;
@@ -82,7 +63,6 @@
             height: 120px;
             z-index: 100;
         }
-
         #joystick-base {
             position: absolute;
             width: 100%;
@@ -91,7 +71,6 @@
             border-radius: 50%;
             border: 3px solid rgba(255, 255, 255, 0.3);
         }
-
         #joystick-stick {
             position: absolute;
             width: 50px;
@@ -101,40 +80,48 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            transition: none;
         }
 
-        /* Interaction button */
-        #interact-btn {
+        #camera-zone {
             position: absolute;
-            bottom: 50px;
+            bottom: 30px;
             right: 30px;
-            width: 80px;
-            height: 80px;
-            background: linear-gradient(135deg, #22c55e, #16a34a);
-            border: 3px solid rgba(255,255,255,0.3);
+            width: 100px;
+            height: 100px;
+            z-index: 100;
+            background: rgba(255,255,255,0.1);
             border-radius: 50%;
-            color: white;
-            font-size: 14px;
-            font-weight: 700;
-            display: none;
+            border: 2px solid rgba(255,255,255,0.2);
+            display: flex;
             align-items: center;
             justify-content: center;
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+        }
+
+        #interact-btn {
+            position: absolute;
+            bottom: 160px;
+            right: 30px;
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            border: none;
+            border-radius: 25px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            display: none;
             z-index: 100;
             cursor: pointer;
         }
+        #interact-btn.visible { display: block; }
 
-        #interact-btn.visible {
-            display: flex;
-        }
-
-        /* Location indicator */
-        #location {
+        #location-display {
             position: absolute;
-            bottom: 150px;
+            top: 70px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
+            background: rgba(0,0,0,0.8);
             color: white;
             padding: 8px 20px;
             border-radius: 20px;
@@ -142,71 +129,30 @@
             z-index: 100;
             display: none;
         }
+        #location-display.visible { display: block; }
 
-        #location.visible {
-            display: block;
-        }
-
-        /* News ticker */
-        #news-ticker {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: rgba(0, 0, 0, 0.8);
-            color: #fbbf24;
-            padding: 8px 0;
-            font-size: 12px;
-            overflow: hidden;
-            z-index: 100;
-        }
-
-        #news-text {
-            white-space: nowrap;
-            animation: scroll 20s linear infinite;
-        }
-
-        @keyframes scroll {
-            0% { transform: translateX(100%); }
-            100% { transform: translateX(-100%); }
-        }
-
-        /* Trading Modal */
+        /* Modal */
         #modal {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.9);
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
             display: none;
             z-index: 200;
             overflow-y: auto;
         }
-
-        #modal.visible {
-            display: block;
-        }
-
+        #modal.visible { display: block; }
         #modal-content {
             max-width: 500px;
             margin: 20px auto;
             padding: 20px;
         }
-
         #modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
         }
-
-        #modal-title {
-            color: white;
-            font-size: 24px;
-            font-weight: 700;
-        }
-
+        #modal-title { color: white; font-size: 24px; font-weight: 700; }
         #close-modal {
             background: rgba(255,255,255,0.1);
             border: none;
@@ -217,14 +163,7 @@
             font-size: 20px;
             cursor: pointer;
         }
-
-        /* Tabs */
-        .tabs {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
         .tab {
             flex: 1;
             padding: 12px;
@@ -236,19 +175,8 @@
             font-weight: 600;
             cursor: pointer;
         }
-
-        .tab.active {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-        }
-
-        /* Asset list */
-        .asset-list {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
+        .tab.active { background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; }
+        .asset-list { display: flex; flex-direction: column; gap: 10px; }
         .asset-item {
             background: rgba(255,255,255,0.05);
             border-radius: 12px;
@@ -257,206 +185,88 @@
             justify-content: space-between;
             align-items: center;
             cursor: pointer;
-            transition: background 0.2s;
         }
-
-        .asset-item:active {
-            background: rgba(255,255,255,0.1);
-        }
-
-        .asset-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .asset-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-
-        .asset-name {
-            color: white;
-            font-weight: 600;
-        }
-
-        .asset-symbol {
-            color: rgba(255,255,255,0.5);
-            font-size: 12px;
-        }
-
-        .asset-price {
-            text-align: right;
-        }
-
-        .asset-current {
-            color: white;
-            font-weight: 600;
-        }
-
-        .asset-change {
-            font-size: 12px;
-        }
-
+        .asset-item:active { background: rgba(255,255,255,0.1); }
+        .asset-info { display: flex; align-items: center; gap: 12px; }
+        .asset-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .asset-name { color: white; font-weight: 600; }
+        .asset-symbol { color: rgba(255,255,255,0.5); font-size: 12px; }
+        .asset-price { text-align: right; }
+        .asset-current { color: white; font-weight: 600; }
+        .asset-change { font-size: 12px; }
         .asset-change.up { color: #4ade80; }
         .asset-change.down { color: #f87171; }
+        #trade-panel { display: none; background: rgba(30, 40, 60, 0.95); border-radius: 16px; padding: 20px; margin-top: 20px; }
+        #trade-panel.visible { display: block; }
+        #trade-asset-name { color: white; font-size: 20px; font-weight: 700; margin-bottom: 5px; }
+        #trade-asset-price { color: #4ade80; font-size: 28px; font-weight: 700; margin-bottom: 15px; }
+        .trade-input-group { margin-bottom: 15px; }
+        .trade-label { color: rgba(255,255,255,0.6); font-size: 12px; margin-bottom: 5px; }
+        .trade-input { width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; font-size: 18px; }
+        .trade-buttons { display: flex; gap: 10px; margin-top: 15px; }
+        .trade-btn { flex: 1; padding: 15px; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
+        .trade-btn.buy { background: linear-gradient(135deg, #22c55e, #16a34a); color: white; }
+        .trade-btn.sell { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        #trade-total { color: rgba(255,255,255,0.7); text-align: center; margin-top: 10px; }
+        #holding-info { margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px; color: rgba(255,255,255,0.7); font-size: 13px; }
+        #portfolio-panel { display: none; }
+        #portfolio-panel.visible { display: block; }
+        .portfolio-total { background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(22, 163, 74, 0.2)); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px; }
+        .portfolio-total-label { color: rgba(255,255,255,0.6); font-size: 12px; }
+        .portfolio-total-value { color: #4ade80; font-size: 32px; font-weight: 700; }
+        .holding-item { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 15px; margin-bottom: 10px; }
+        .holding-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .holding-name { color: white; font-weight: 600; }
+        .holding-value { color: #4ade80; font-weight: 600; }
+        .holding-details { display: flex; justify-content: space-between; color: rgba(255,255,255,0.5); font-size: 12px; }
 
-        /* Trade panel */
-        #trade-panel {
-            display: none;
-            background: rgba(30, 40, 60, 0.95);
-            border-radius: 16px;
+        /* Interaction menu */
+        #interact-menu {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(10, 20, 40, 0.98);
+            border-radius: 20px;
             padding: 20px;
-            margin-top: 20px;
+            display: none;
+            z-index: 150;
+            min-width: 280px;
+            border: 1px solid rgba(100, 200, 255, 0.3);
         }
-
-        #trade-panel.visible {
+        #interact-menu.visible { display: block; }
+        #interact-menu h3 { color: white; margin-bottom: 15px; text-align: center; }
+        .menu-option {
             display: block;
-        }
-
-        #trade-asset-name {
-            color: white;
-            font-size: 20px;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-
-        #trade-asset-price {
-            color: #4ade80;
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 20px;
-        }
-
-        .trade-input-group {
-            margin-bottom: 15px;
-        }
-
-        .trade-label {
-            color: rgba(255,255,255,0.6);
-            font-size: 12px;
-            margin-bottom: 5px;
-        }
-
-        .trade-input {
             width: 100%;
-            padding: 12px;
-            background: rgba(0,0,0,0.3);
-            border: 1px solid rgba(255,255,255,0.2);
-            border-radius: 10px;
-            color: white;
-            font-size: 18px;
-        }
-
-        .trade-buttons {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-
-        .trade-btn {
-            flex: 1;
             padding: 15px;
+            margin: 8px 0;
+            background: rgba(255,255,255,0.1);
             border: none;
             border-radius: 12px;
-            font-size: 16px;
-            font-weight: 700;
+            color: white;
+            font-size: 15px;
             cursor: pointer;
+            text-align: left;
         }
-
-        .trade-btn.buy {
-            background: linear-gradient(135deg, #22c55e, #16a34a);
-            color: white;
-        }
-
-        .trade-btn.sell {
-            background: linear-gradient(135deg, #ef4444, #dc2626);
-            color: white;
-        }
-
-        #trade-total {
-            color: rgba(255,255,255,0.7);
-            text-align: center;
-            margin-top: 10px;
-        }
-
-        /* Portfolio */
-        #portfolio-panel {
-            display: none;
-        }
-
-        #portfolio-panel.visible {
+        .menu-option:hover { background: rgba(255,255,255,0.2); }
+        .menu-option:disabled { opacity: 0.5; cursor: not-allowed; }
+        #close-interact-menu {
             display: block;
-        }
-
-        .portfolio-total {
-            background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(22, 163, 74, 0.2));
-            border: 1px solid rgba(34, 197, 94, 0.3);
+            width: 100%;
+            padding: 12px;
+            margin-top: 15px;
+            background: rgba(255,100,100,0.3);
+            border: none;
             border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .portfolio-total-label {
-            color: rgba(255,255,255,0.6);
-            font-size: 12px;
-        }
-
-        .portfolio-total-value {
-            color: #4ade80;
-            font-size: 32px;
-            font-weight: 700;
-        }
-
-        .holding-item {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 10px;
-        }
-
-        .holding-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-
-        .holding-name {
             color: white;
-            font-weight: 600;
-        }
-
-        .holding-value {
-            color: #4ade80;
-            font-weight: 600;
-        }
-
-        .holding-details {
-            display: flex;
-            justify-content: space-between;
-            color: rgba(255,255,255,0.5);
-            font-size: 12px;
-        }
-
-        /* Mini chart */
-        .mini-chart {
-            height: 30px;
-            margin-top: 8px;
+            cursor: pointer;
         }
 
         /* Loading */
         #loading {
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: linear-gradient(135deg, #0f172a, #1e293b);
             display: flex;
             flex-direction: column;
@@ -464,50 +274,61 @@
             justify-content: center;
             z-index: 1000;
         }
+        #loading.hidden { display: none; }
+        #loading h1 { color: #fff; font-size: 32px; margin-bottom: 10px; }
+        #loading p { color: rgba(255,255,255,0.6); margin-bottom: 30px; }
+        .loader { width: 50px; height: 50px; border: 4px solid rgba(59, 130, 246, 0.3); border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        #loading.hidden {
+        /* Message popup */
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 20px 40px;
+            border-radius: 15px;
+            font-size: 18px;
+            z-index: 300;
             display: none;
+            text-align: center;
         }
-
-        #loading h1 {
-            color: #fff;
-            font-size: 32px;
-            margin-bottom: 10px;
-        }
-
-        #loading p {
-            color: rgba(255,255,255,0.6);
-            margin-bottom: 30px;
-        }
-
-        .loader {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(59, 130, 246, 0.3);
-            border-top-color: #3b82f6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        #message.visible { display: block; animation: fadeInOut 2s forwards; }
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+            15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            85% { opacity: 1; }
+            100% { opacity: 0; }
         }
     </style>
 </head>
 <body>
     <div id="game">
         <div id="loading">
-            <h1>💰 Trading City</h1>
-            <p>Добро пожаловать в мир инвестиций</p>
+            <h1>🏠 Life Simulator</h1>
+            <p>Твоя новая жизнь начинается</p>
             <div class="loader"></div>
         </div>
 
         <div id="hud">
-            <div id="balance-panel">
-                <div class="label">Баланс</div>
-                <div class="value" id="balance">$10,000</div>
+            <div id="stats-panel">
+                <div class="stat-row">
+                    <span class="stat-label">⚡ Энергия</span>
+                    <div class="stat-bar"><div class="stat-fill energy" id="energy-bar" style="width:100%"></div></div>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">🍔 Сытость</span>
+                    <div class="stat-bar"><div class="stat-fill hunger" id="hunger-bar" style="width:100%"></div></div>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">😊 Счастье</span>
+                    <div class="stat-bar"><div class="stat-fill happiness" id="happiness-bar" style="width:100%"></div></div>
+                </div>
+                <div id="balance-display">$10,000</div>
             </div>
-            <button id="portfolio-btn">📊 Портфель</button>
+            <div id="time-display">🌅 08:00</div>
         </div>
 
         <div id="joystick-zone">
@@ -516,23 +337,25 @@
             </div>
         </div>
 
-        <button id="interact-btn">ВОЙТИ</button>
+        <div id="camera-zone">🔄 Камера</div>
 
-        <div id="location">📍 Фондовая биржа</div>
+        <button id="interact-btn">Взаимодействие</button>
+        <div id="location-display"></div>
 
-        <div id="news-ticker">
-            <span id="news-text">📰 Добро пожаловать в Trading City! Посетите здания чтобы торговать активами.</span>
+        <div id="message"></div>
+
+        <div id="interact-menu">
+            <h3 id="interact-menu-title">Действие</h3>
+            <div id="interact-menu-options"></div>
+            <button id="close-interact-menu">Закрыть</button>
         </div>
 
-        <!-- Trading Modal -->
         <div id="modal">
             <div id="modal-content">
                 <div id="modal-header">
-                    <div id="modal-title">Торговля</div>
+                    <div id="modal-title">Компьютер</div>
                     <button id="close-modal">✕</button>
                 </div>
-
-                <!-- Asset Selection -->
                 <div id="asset-selection">
                     <div class="tabs">
                         <button class="tab active" data-type="crypto">🪙 Крипто</button>
@@ -541,8 +364,6 @@
                     </div>
                     <div class="asset-list" id="asset-list"></div>
                 </div>
-
-                <!-- Trade Panel -->
                 <div id="trade-panel">
                     <button id="back-to-list" style="background:none;border:none;color:#3b82f6;margin-bottom:15px;cursor:pointer;">← Назад</button>
                     <div id="trade-asset-name">Bitcoin</div>
@@ -557,13 +378,11 @@
                         <button class="trade-btn buy" id="buy-btn">КУПИТЬ</button>
                         <button class="trade-btn sell" id="sell-btn">ПРОДАТЬ</button>
                     </div>
-                    <div id="holding-info" style="margin-top:15px;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;color:rgba(255,255,255,0.7);font-size:13px;"></div>
+                    <div id="holding-info"></div>
                 </div>
-
-                <!-- Portfolio Panel -->
                 <div id="portfolio-panel">
                     <div class="portfolio-total">
-                        <div class="portfolio-total-label">ОБЩАЯ СТОИМОСТЬ ПОРТФЕЛЯ</div>
+                        <div class="portfolio-total-label">ОБЩАЯ СТОИМОСТЬ</div>
                         <div class="portfolio-total-value" id="portfolio-value">$10,000</div>
                     </div>
                     <div id="holdings-list"></div>

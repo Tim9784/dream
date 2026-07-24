@@ -1,7 +1,7 @@
-// Trading City - 3D Investment Game
-// Enhanced version with collisions, better graphics, persistent saves
+// Life Simulator - Full Featured Game
+// Trading, apartment life, NPCs, interactions
 
-class TradingGame {
+class LifeSimulator {
     constructor() {
         this.scene = null;
         this.camera = null;
@@ -10,19 +10,37 @@ class TradingGame {
         
         // Player
         this.player = null;
-        this.playerSpeed = 10;
+        this.playerSpeed = 8;
         this.moveDir = { x: 0, z: 0 };
+        this.cameraAngle = 0;
+        this.cameraPitch = 0.4;
+        this.cameraDistance = 15;
         
-        // Buildings & Collisions
+        // World state
+        this.isInside = false;
+        this.currentRoom = null;
         this.buildings = [];
         this.colliders = [];
-        this.nearBuilding = null;
+        this.interactables = [];
+        this.npcs = [];
+        this.nearObject = null;
         
-        // Economy - Load from localStorage
+        // Player stats
+        this.stats = {
+            energy: 100,
+            hunger: 100,
+            happiness: 80
+        };
+        
+        // Time
+        this.gameTime = 8 * 60; // Minutes from midnight
+        this.timeSpeed = 1; // 1 real second = 1 game minute
+        
+        // Economy
         this.balance = 10000;
         this.portfolio = {};
         this.priceHistory = {};
-        this.loadSaveData();
+        this.loadSave();
         
         // Assets
         this.assets = {
@@ -40,100 +58,45 @@ class TradingGame {
             ],
             bonds: [
                 { id: 'usbond', name: 'US Treasury', symbol: 'T-BOND', price: 98.5, color: '#1a5276', icon: '🇺🇸', volatility: 0.003 },
-                { id: 'corpbond', name: 'Corp Bond AAA', symbol: 'CORP-A', price: 102.3, color: '#2e86ab', icon: '🏢', volatility: 0.005 },
-                { id: 'munibond', name: 'Municipal', symbol: 'MUNI', price: 100.8, color: '#a23b72', icon: '🏛️', volatility: 0.004 }
+                { id: 'corpbond', name: 'Corp Bond', symbol: 'CORP', price: 102.3, color: '#2e86ab', icon: '🏢', volatility: 0.005 }
             ]
         };
 
         this.currentAssetType = 'crypto';
         this.selectedAsset = null;
         this.isModalOpen = false;
-        this.showingPortfolio = false;
-
-        this.newsItems = [
-            "📰 Bitcoin достиг нового максимума! Инвесторы в восторге.",
-            "📉 Акции Tesla падают на фоне отчётности.",
-            "🚀 Ethereum обновляется — газ подешевел!",
-            "💼 Apple представила новый продукт.",
-            "🏦 ФРС оставила ставку без изменений.",
-            "📊 Рынок облигаций стабилен.",
-            "🐕 Dogecoin взлетел после твита Илона Маска!",
-            "🌍 Глобальные рынки открылись ростом.",
-            "⚡ Solana показывает рекордную скорость транзакций!",
-            "📱 Google анонсировал новый AI продукт."
-        ];
+        this.isMenuOpen = false;
 
         this.init();
     }
 
-    // ============== SAVE/LOAD ==============
-    
-    loadSaveData() {
+    loadSave() {
         try {
-            const saved = localStorage.getItem('tradingCity_save');
+            const saved = localStorage.getItem('lifeSim_save');
             if (saved) {
                 const data = JSON.parse(saved);
                 this.balance = data.balance || 10000;
                 this.portfolio = data.portfolio || {};
-                console.log('Game loaded!', this.balance, this.portfolio);
+                this.stats = data.stats || { energy: 100, hunger: 100, happiness: 80 };
             }
-        } catch (e) {
-            console.log('No save data found');
-        }
+        } catch (e) {}
     }
 
     saveGame() {
         try {
-            const data = {
+            localStorage.setItem('lifeSim_save', JSON.stringify({
                 balance: this.balance,
-                portfolio: this.portfolio
-            };
-            localStorage.setItem('tradingCity_save', JSON.stringify(data));
-        } catch (e) {
-            console.log('Save failed');
-        }
+                portfolio: this.portfolio,
+                stats: this.stats
+            }));
+        } catch (e) {}
     }
-
-    // ============== INIT ==============
 
     init() {
         // Scene
         this.scene = new THREE.Scene();
-        
-        // Sky gradient
-        const skyGeo = new THREE.SphereGeometry(400, 32, 32);
-        const skyMat = new THREE.ShaderMaterial({
-            uniforms: {
-                topColor: { value: new THREE.Color(0x0077ff) },
-                bottomColor: { value: new THREE.Color(0x89cff0) },
-                offset: { value: 20 },
-                exponent: { value: 0.6 }
-            },
-            vertexShader: `
-                varying vec3 vWorldPosition;
-                void main() {
-                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                    vWorldPosition = worldPosition.xyz;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                }
-            `,
-            fragmentShader: `
-                uniform vec3 topColor;
-                uniform vec3 bottomColor;
-                uniform float offset;
-                uniform float exponent;
-                varying vec3 vWorldPosition;
-                void main() {
-                    float h = normalize(vWorldPosition + offset).y;
-                    gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
-                }
-            `,
-            side: THREE.BackSide
-        });
-        const sky = new THREE.Mesh(skyGeo, skyMat);
-        this.scene.add(sky);
-
-        this.scene.fog = new THREE.Fog(0x89cff0, 80, 200);
+        this.scene.background = new THREE.Color(0x87ceeb);
+        this.scene.fog = new THREE.Fog(0x87ceeb, 50, 150);
 
         // Camera
         this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
@@ -144,18 +107,16 @@ class TradingGame {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.1;
         document.getElementById('game').prepend(this.renderer.domElement);
 
         this.createLights();
-        this.createWorld();
+        this.createOutdoorWorld();
+        this.createApartment();
         this.createPlayer();
-        this.initPriceHistory();
+        this.createNPCs();
+        this.initPrices();
         this.setupEvents();
-        this.startPriceUpdates();
-        this.startNews();
-        this.updateBalance();
+        this.startSystems();
 
         setTimeout(() => {
             document.getElementById('loading').classList.add('hidden');
@@ -165,42 +126,32 @@ class TradingGame {
     }
 
     createLights() {
-        // Ambient
         this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
-        // Sun
-        const sun = new THREE.DirectionalLight(0xfffaed, 1.2);
-        sun.position.set(60, 100, 40);
-        sun.castShadow = true;
-        sun.shadow.mapSize.width = 4096;
-        sun.shadow.mapSize.height = 4096;
-        sun.shadow.camera.near = 10;
-        sun.shadow.camera.far = 400;
-        sun.shadow.camera.left = -120;
-        sun.shadow.camera.right = 120;
-        sun.shadow.camera.top = 120;
-        sun.shadow.camera.bottom = -120;
-        sun.shadow.bias = -0.0001;
-        this.scene.add(sun);
+        this.sunLight = new THREE.DirectionalLight(0xffffff, 1);
+        this.sunLight.position.set(50, 80, 30);
+        this.sunLight.castShadow = true;
+        this.sunLight.shadow.mapSize.width = 2048;
+        this.sunLight.shadow.mapSize.height = 2048;
+        this.sunLight.shadow.camera.near = 10;
+        this.sunLight.shadow.camera.far = 200;
+        this.sunLight.shadow.camera.left = -60;
+        this.sunLight.shadow.camera.right = 60;
+        this.sunLight.shadow.camera.top = 60;
+        this.sunLight.shadow.camera.bottom = -60;
+        this.scene.add(this.sunLight);
 
-        // Hemisphere
-        this.scene.add(new THREE.HemisphereLight(0x87ceeb, 0x556633, 0.5));
-
-        // Fill light
-        const fill = new THREE.DirectionalLight(0x8888ff, 0.2);
-        fill.position.set(-50, 30, -50);
-        this.scene.add(fill);
+        this.scene.add(new THREE.HemisphereLight(0x87ceeb, 0x3d5c3d, 0.4));
     }
 
-    createWorld() {
-        // Ground with texture
-        const groundGeo = new THREE.PlaneGeometry(300, 300, 50, 50);
-        const groundMat = new THREE.MeshStandardMaterial({ 
-            color: 0x4a7c4e,
-            roughness: 0.9,
-            metalness: 0.0
-        });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
+    // ==================== OUTDOOR WORLD ====================
+
+    createOutdoorWorld() {
+        // Ground
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(200, 200),
+            new THREE.MeshStandardMaterial({ color: 0x4a7c4e, roughness: 0.9 })
+        );
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         this.scene.add(ground);
@@ -209,671 +160,776 @@ class TradingGame {
         this.createRoads();
 
         // Buildings
-        this.createBuildings();
+        this.createBuilding('Жилой дом', 'home', [-30, -25], [18, 20, 18], 0x8b7355);
+        this.createBuilding('Магазин', 'shop', [30, -25], [16, 12, 14], 0x22c55e);
+        this.createBuilding('Кафе', 'cafe', [30, 25], [14, 10, 12], 0xf59e0b);
+        this.createBuilding('Парк', 'park', [-30, 25], [20, 2, 20], 0x16a34a);
 
-        // Environment
-        this.createEnvironment();
+        // Decorations
+        this.createTrees();
+        this.createStreetObjects();
     }
 
     createRoads() {
-        const roadMat = new THREE.MeshStandardMaterial({ 
-            color: 0x333333, 
-            roughness: 0.8 
-        });
-        const sidewalkMat = new THREE.MeshStandardMaterial({ 
-            color: 0x888888, 
-            roughness: 0.7 
-        });
-
-        // Main horizontal road
-        const roadH = new THREE.Mesh(new THREE.BoxGeometry(250, 0.1, 14), roadMat);
+        const roadMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+        
+        const roadH = new THREE.Mesh(new THREE.BoxGeometry(200, 0.1, 12), roadMat);
         roadH.position.y = 0.05;
         roadH.receiveShadow = true;
         this.scene.add(roadH);
 
-        // Main vertical road
-        const roadV = new THREE.Mesh(new THREE.BoxGeometry(14, 0.1, 250), roadMat);
+        const roadV = new THREE.Mesh(new THREE.BoxGeometry(12, 0.1, 200), roadMat);
         roadV.position.y = 0.05;
         roadV.receiveShadow = true;
         this.scene.add(roadV);
 
-        // Sidewalks
-        const swPositions = [
-            [0, 8.5, 125, 3], [0, -8.5, 125, 3],
-            [8.5, 0, 3, 125], [-8.5, 0, 3, 125]
-        ];
-        swPositions.forEach(([x, z, w, d]) => {
-            const sw = new THREE.Mesh(new THREE.BoxGeometry(w, 0.15, d), sidewalkMat);
-            sw.position.set(x, 0.075, z);
-            sw.receiveShadow = true;
-            this.scene.add(sw);
-            
-            const sw2 = sw.clone();
-            sw2.position.z = -z;
-            this.scene.add(sw2);
-        });
-
-        // Road markings
-        const markingMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        for (let i = -110; i <= 110; i += 8) {
+        // Markings
+        const markMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        for (let i = -90; i <= 90; i += 8) {
             if (Math.abs(i) < 8) continue;
-            const marking = new THREE.Mesh(new THREE.BoxGeometry(4, 0.02, 0.4), markingMat);
-            marking.position.set(i, 0.11, 0);
-            this.scene.add(marking);
-
-            const marking2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 4), markingMat);
-            marking2.position.set(0, 0.11, i);
-            this.scene.add(marking2);
+            const m1 = new THREE.Mesh(new THREE.BoxGeometry(4, 0.02, 0.3), markMat);
+            m1.position.set(i, 0.11, 0);
+            this.scene.add(m1);
+            const m2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 4), markMat);
+            m2.position.set(0, 0.11, i);
+            this.scene.add(m2);
         }
-
-        // Crosswalks
-        const crosswalkMat = new THREE.MeshBasicMaterial({ color: 0xeeeeee });
-        [[-12, 0], [12, 0], [0, -12], [0, 12]].forEach(([x, z]) => {
-            for (let i = -5; i <= 5; i += 2.5) {
-                const stripe = new THREE.Mesh(new THREE.BoxGeometry(x === 0 ? 1 : 6, 0.02, x === 0 ? 6 : 1), crosswalkMat);
-                stripe.position.set(x === 0 ? i : x, 0.11, z === 0 ? i : z);
-                this.scene.add(stripe);
-            }
-        });
     }
 
-    createBuildings() {
-        const configs = [
-            { name: 'Криптобиржа', type: 'crypto', pos: [-40, 35], size: [24, 30, 22], color: 0xf7931a, roofColor: 0xcc7700 },
-            { name: 'Фондовая биржа', type: 'stocks', pos: [40, 35], size: [28, 40, 24], color: 0x2563eb, roofColor: 0x1e40af },
-            { name: 'Банк', type: 'bonds', pos: [-40, -40], size: [26, 25, 22], color: 0x1a5276, roofColor: 0x154360 },
-            { name: 'Торговый центр', type: 'shop', pos: [40, -40], size: [32, 18, 28], color: 0xec4899, roofColor: 0xbe185d }
-        ];
-
-        configs.forEach(config => {
-            const building = this.createBuilding(config);
-            this.buildings.push(building);
-        });
-    }
-
-    createBuilding(config) {
+    createBuilding(name, type, pos, size, color) {
         const group = new THREE.Group();
-        const [w, h, d] = config.size;
+        const [w, h, d] = size;
 
-        // Foundation
-        const foundationGeo = new THREE.BoxGeometry(w + 2, 1, d + 2);
-        const foundationMat = new THREE.MeshStandardMaterial({ color: 0x444444, roughness: 0.9 });
-        const foundation = new THREE.Mesh(foundationGeo, foundationMat);
-        foundation.position.y = 0.5;
-        foundation.receiveShadow = true;
-        foundation.castShadow = true;
-        group.add(foundation);
-
-        // Main building
-        const buildingGeo = new THREE.BoxGeometry(w, h, d);
-        const buildingMat = new THREE.MeshStandardMaterial({ 
-            color: config.color,
-            roughness: 0.6,
-            metalness: 0.1
-        });
-        const building = new THREE.Mesh(buildingGeo, buildingMat);
-        building.position.y = h / 2 + 1;
+        // Main structure
+        const building = new THREE.Mesh(
+            new THREE.BoxGeometry(w, h, d),
+            new THREE.MeshStandardMaterial({ color, roughness: 0.7 })
+        );
+        building.position.y = h / 2;
         building.castShadow = true;
         building.receiveShadow = true;
         group.add(building);
 
         // Roof
-        const roofGeo = new THREE.BoxGeometry(w + 1, 2, d + 1);
-        const roofMat = new THREE.MeshStandardMaterial({ color: config.roofColor, roughness: 0.5 });
-        const roof = new THREE.Mesh(roofGeo, roofMat);
-        roof.position.y = h + 2;
+        const roof = new THREE.Mesh(
+            new THREE.BoxGeometry(w + 1, 1, d + 1),
+            new THREE.MeshStandardMaterial({ color: 0x444444 })
+        );
+        roof.position.y = h + 0.5;
         roof.castShadow = true;
         group.add(roof);
 
-        // AC units on roof
-        for (let i = 0; i < 3; i++) {
-            const ac = new THREE.Mesh(
-                new THREE.BoxGeometry(2, 1.5, 2),
-                new THREE.MeshStandardMaterial({ color: 0x666666 })
-            );
-            ac.position.set(-w/4 + i * w/4, h + 3.75, 0);
-            ac.castShadow = true;
-            group.add(ac);
-        }
-
-        // Windows - detailed
-        const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-        const windowGlassMat = new THREE.MeshStandardMaterial({ 
-            color: 0x88ccff,
-            metalness: 0.9,
-            roughness: 0.1,
-            transparent: true,
-            opacity: 0.7
-        });
-
-        const rows = Math.floor(h / 5);
-        const cols = Math.floor(w / 5);
-
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
-                // Front windows
-                const winFrame = new THREE.Mesh(new THREE.BoxGeometry(2.5, 3, 0.2), windowFrameMat);
-                winFrame.position.set(-w/2 + 2.5 + col * 5, 4 + row * 5, d/2 + 0.1);
-                group.add(winFrame);
-
-                const winGlass = new THREE.Mesh(new THREE.BoxGeometry(2, 2.5, 0.1), windowGlassMat);
-                winGlass.position.set(-w/2 + 2.5 + col * 5, 4 + row * 5, d/2 + 0.2);
-                group.add(winGlass);
-
-                // Back windows
-                const winFrame2 = winFrame.clone();
-                winFrame2.position.z = -d/2 - 0.1;
-                group.add(winFrame2);
-
-                const winGlass2 = winGlass.clone();
-                winGlass2.position.z = -d/2 - 0.2;
-                group.add(winGlass2);
+        // Windows
+        if (type !== 'park') {
+            const winMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, emissive: 0x224466, emissiveIntensity: 0.2 });
+            const rows = Math.floor(h / 5);
+            const cols = Math.floor(w / 4);
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const win = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.1), winMat);
+                    win.position.set(-w/2 + 2 + c * 4, 3 + r * 5, d/2 + 0.05);
+                    group.add(win);
+                }
             }
         }
 
-        // Entrance - detailed
-        const entranceFrameMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 });
-        const entranceFrame = new THREE.Mesh(new THREE.BoxGeometry(8, 10, 0.5), entranceFrameMat);
-        entranceFrame.position.set(0, 6, d/2 + 0.25);
-        group.add(entranceFrame);
-
-        const entranceGlass = new THREE.Mesh(
-            new THREE.BoxGeometry(6, 8, 0.1),
-            new THREE.MeshStandardMaterial({ color: 0x335566, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.8 })
+        // Entrance
+        const entrance = new THREE.Mesh(
+            new THREE.BoxGeometry(4, 6, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x222222 })
         );
-        entranceGlass.position.set(0, 5, d/2 + 0.5);
-        group.add(entranceGlass);
-
-        // Entrance canopy
-        const canopy = new THREE.Mesh(
-            new THREE.BoxGeometry(10, 0.5, 4),
-            new THREE.MeshStandardMaterial({ color: 0x333333 })
-        );
-        canopy.position.set(0, 10.5, d/2 + 2);
-        canopy.castShadow = true;
-        group.add(canopy);
+        entrance.position.set(0, 3, d/2 + 0.25);
+        group.add(entrance);
 
         // Sign
-        const signGeo = new THREE.BoxGeometry(w * 0.7, 3, 0.3);
-        const signMat = new THREE.MeshStandardMaterial({ 
-            color: 0xffffff,
-            emissive: 0xffffff,
-            emissiveIntensity: 0.2
-        });
-        const sign = new THREE.Mesh(signGeo, signMat);
-        sign.position.set(0, h - 2, d/2 + 0.3);
+        const sign = new THREE.Mesh(
+            new THREE.BoxGeometry(w * 0.6, 2, 0.2),
+            new THREE.MeshBasicMaterial({ color: 0xffffff })
+        );
+        sign.position.set(0, h - 2, d/2 + 0.2);
         group.add(sign);
 
-        // Pillars at entrance
-        const pillarGeo = new THREE.CylinderGeometry(0.4, 0.5, 10, 8);
-        const pillarMat = new THREE.MeshStandardMaterial({ color: 0xdddddd });
-        [-4, 4].forEach(x => {
-            const pillar = new THREE.Mesh(pillarGeo, pillarMat);
-            pillar.position.set(x, 5, d/2 + 2);
-            pillar.castShadow = true;
-            group.add(pillar);
+        group.position.set(pos[0], 0, pos[1]);
+        this.scene.add(group);
+
+        // Collision
+        this.colliders.push({
+            minX: pos[0] - w/2 - 0.5,
+            maxX: pos[0] + w/2 + 0.5,
+            minZ: pos[1] - d/2 - 0.5,
+            maxZ: pos[1] + d/2 + 0.5,
+            isBuilding: true
         });
 
-        group.position.set(config.pos[0], 0, config.pos[1]);
-        
-        // Collision box
-        const collider = {
-            minX: config.pos[0] - w/2 - 1,
-            maxX: config.pos[0] + w/2 + 1,
-            minZ: config.pos[1] - d/2 - 1,
-            maxZ: config.pos[1] + d/2 + 1
+        // Interactable entrance
+        const interactable = {
+            name, type,
+            position: new THREE.Vector3(pos[0], 0, pos[1] + d/2 + 2),
+            radius: 4,
+            actions: this.getActionsForType(type)
         };
-        this.colliders.push(collider);
-
-        // Interaction zone (larger)
-        group.userData = { 
-            name: config.name, 
-            type: config.type,
-            interactZone: {
-                minX: config.pos[0] - w/2 - 5,
-                maxX: config.pos[0] + w/2 + 5,
-                minZ: config.pos[1] - d/2 - 5,
-                maxZ: config.pos[1] + d/2 + 8 // Extend in front
-            }
-        };
-
-        this.scene.add(group);
-        return group;
+        this.interactables.push(interactable);
+        this.buildings.push({ group, config: { name, type, pos, size } });
     }
 
-    createEnvironment() {
-        // Trees
-        const treePositions = [
-            [-70, 15], [-70, -15], [70, 15], [70, -15],
-            [-15, 70], [15, 70], [-15, -70], [15, -70],
-            [-60, 60], [60, 60], [-60, -60], [60, -60],
-            [-80, 0], [80, 0], [0, 80], [0, -80],
-            [-70, 50], [70, 50], [-70, -50], [70, -50]
-        ];
+    getActionsForType(type) {
+        switch(type) {
+            case 'home': return [{ name: '🚪 Войти в квартиру', action: 'enterHome' }];
+            case 'shop': return [
+                { name: '🍎 Купить еду ($20)', action: 'buyFood', cost: 20 },
+                { name: '☕ Купить кофе ($5)', action: 'buyCoffee', cost: 5 }
+            ];
+            case 'cafe': return [
+                { name: '🍕 Поесть ($30)', action: 'eatMeal', cost: 30 },
+                { name: '🍺 Выпить ($15)', action: 'drink', cost: 15 }
+            ];
+            case 'park': return [
+                { name: '🚶 Прогуляться', action: 'walk' },
+                { name: '🧘 Медитация', action: 'meditate' }
+            ];
+            default: return [];
+        }
+    }
 
-        treePositions.forEach(pos => {
-            this.createTree(pos[0], pos[1]);
+    createTrees() {
+        const positions = [
+            [-50, 10], [-50, -10], [50, 10], [50, -10],
+            [-60, 40], [60, 40], [-60, -40], [60, -40],
+            [-15, 50], [15, 50], [-15, -50], [15, -50]
+        ];
+        
+        positions.forEach(([x, z]) => {
+            const tree = new THREE.Group();
+            
+            const trunk = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.3, 0.5, 4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x4a3728 })
+            );
+            trunk.position.y = 2;
+            trunk.castShadow = true;
+            tree.add(trunk);
+
+            const foliage = new THREE.Mesh(
+                new THREE.SphereGeometry(2.5, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0x228b22 })
+            );
+            foliage.position.y = 5.5;
+            foliage.castShadow = true;
+            tree.add(foliage);
+
+            tree.position.set(x, 0, z);
+            this.scene.add(tree);
+
+            this.colliders.push({ minX: x - 0.8, maxX: x + 0.8, minZ: z - 0.8, maxZ: z + 0.8 });
         });
+    }
 
+    createStreetObjects() {
         // Benches
-        const benchPositions = [
-            [-18, 12, 0], [18, 12, 0], [-18, -12, 0], [18, -12, 0],
-            [-12, 18, Math.PI/2], [12, 18, Math.PI/2], [-12, -18, Math.PI/2], [12, -18, Math.PI/2]
-        ];
+        [[-12, 15], [12, 15], [-12, -15], [12, -15]].forEach(([x, z]) => {
+            const bench = new THREE.Group();
+            const seat = new THREE.Mesh(
+                new THREE.BoxGeometry(2.5, 0.15, 0.8),
+                new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+            );
+            seat.position.y = 0.6;
+            seat.castShadow = true;
+            bench.add(seat);
 
-        benchPositions.forEach(([x, z, rot]) => {
-            this.createBench(x, z, rot);
+            const back = new THREE.Mesh(
+                new THREE.BoxGeometry(2.5, 0.8, 0.1),
+                new THREE.MeshStandardMaterial({ color: 0x8b4513 })
+            );
+            back.position.set(0, 1, -0.35);
+            bench.add(back);
+
+            bench.position.set(x, 0, z);
+            this.scene.add(bench);
+
+            this.interactables.push({
+                name: 'Скамейка',
+                type: 'bench',
+                position: new THREE.Vector3(x, 0, z),
+                radius: 2,
+                actions: [{ name: '🪑 Сесть отдохнуть', action: 'sitBench' }]
+            });
         });
 
         // Lamp posts
-        const lampPositions = [
-            [-10, 25], [10, 25], [-10, -25], [10, -25],
-            [25, 10], [25, -10], [-25, 10], [-25, -10],
-            [-10, 55], [10, 55], [-10, -55], [10, -55],
-            [55, 10], [55, -10], [-55, 10], [-55, -10]
+        [[-8, 25], [8, 25], [-8, -25], [8, -25]].forEach(([x, z]) => {
+            const lamp = new THREE.Group();
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.15, 6, 8),
+                new THREE.MeshStandardMaterial({ color: 0x222222 })
+            );
+            pole.position.y = 3;
+            lamp.add(pole);
+
+            const light = new THREE.Mesh(
+                new THREE.SphereGeometry(0.4, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xffffcc })
+            );
+            light.position.y = 6.2;
+            lamp.add(light);
+
+            const pl = new THREE.PointLight(0xffffcc, 0.3, 15);
+            pl.position.y = 6;
+            lamp.add(pl);
+
+            lamp.position.set(x, 0, z);
+            this.scene.add(lamp);
+        });
+
+        // Trash cans
+        [[15, 8], [-15, 8], [15, -8], [-15, -8]].forEach(([x, z]) => {
+            const can = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.4, 0.35, 1, 8),
+                new THREE.MeshStandardMaterial({ color: 0x2e7d32 })
+            );
+            can.position.set(x, 0.5, z);
+            can.castShadow = true;
+            this.scene.add(can);
+        });
+
+        // Vending machine
+        const vending = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 2.5, 1),
+            new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+        );
+        vending.position.set(20, 1.25, -8);
+        vending.castShadow = true;
+        this.scene.add(vending);
+
+        this.interactables.push({
+            name: 'Автомат',
+            type: 'vending',
+            position: new THREE.Vector3(20, 0, -8),
+            radius: 2,
+            actions: [
+                { name: '🥤 Купить напиток ($3)', action: 'buyDrink', cost: 3 },
+                { name: '🍫 Купить снэк ($2)', action: 'buySnack', cost: 2 }
+            ]
+        });
+    }
+
+    // ==================== APARTMENT ====================
+
+    createApartment() {
+        this.apartmentGroup = new THREE.Group();
+        this.apartmentGroup.visible = false;
+
+        // Floor
+        const floor = new THREE.Mesh(
+            new THREE.PlaneGeometry(15, 12),
+            new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.8 })
+        );
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        this.apartmentGroup.add(floor);
+
+        // Walls
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f5dc, roughness: 0.9 });
+        
+        // Back wall
+        const backWall = new THREE.Mesh(new THREE.BoxGeometry(15, 4, 0.2), wallMat);
+        backWall.position.set(0, 2, -6);
+        this.apartmentGroup.add(backWall);
+
+        // Side walls
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 12), wallMat);
+        leftWall.position.set(-7.5, 2, 0);
+        this.apartmentGroup.add(leftWall);
+
+        const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 12), wallMat);
+        rightWall.position.set(7.5, 2, 0);
+        this.apartmentGroup.add(rightWall);
+
+        // Ceiling
+        const ceiling = new THREE.Mesh(
+            new THREE.PlaneGeometry(15, 12),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        ceiling.rotation.x = Math.PI / 2;
+        ceiling.position.y = 4;
+        this.apartmentGroup.add(ceiling);
+
+        // Ceiling light
+        const ceilingLight = new THREE.PointLight(0xffffee, 0.8, 15);
+        ceilingLight.position.set(0, 3.5, 0);
+        this.apartmentGroup.add(ceilingLight);
+
+        // Furniture
+        this.createFurniture();
+
+        this.scene.add(this.apartmentGroup);
+
+        // Apartment colliders
+        this.apartmentColliders = [
+            { minX: -7.6, maxX: -7.4, minZ: -6, maxZ: 6 }, // left wall
+            { minX: 7.4, maxX: 7.6, minZ: -6, maxZ: 6 },   // right wall
+            { minX: -7.5, maxX: 7.5, minZ: -6.1, maxZ: -5.9 }, // back wall
+        ];
+    }
+
+    createFurniture() {
+        // Bed
+        const bed = new THREE.Group();
+        const mattress = new THREE.Mesh(
+            new THREE.BoxGeometry(2.5, 0.4, 4),
+            new THREE.MeshStandardMaterial({ color: 0x4a90d9 })
+        );
+        mattress.position.y = 0.5;
+        bed.add(mattress);
+        
+        const frame = new THREE.Mesh(
+            new THREE.BoxGeometry(2.7, 0.3, 4.2),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        frame.position.y = 0.15;
+        bed.add(frame);
+
+        const pillow = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 0.2, 0.6),
+            new THREE.MeshStandardMaterial({ color: 0xffffff })
+        );
+        pillow.position.set(0, 0.8, -1.5);
+        bed.add(pillow);
+
+        const headboard = new THREE.Mesh(
+            new THREE.BoxGeometry(2.7, 1.2, 0.15),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        headboard.position.set(0, 1, -2);
+        bed.add(headboard);
+
+        bed.position.set(-5, 0, -3);
+        this.apartmentGroup.add(bed);
+        this.apartmentColliders.push({ minX: -6.5, maxX: -3.5, minZ: -5.5, maxZ: -1 });
+        
+        this.interactables.push({
+            name: 'Кровать', type: 'bed', indoor: true,
+            position: new THREE.Vector3(-5, 0, -3), radius: 2,
+            actions: [
+                { name: '😴 Поспать (8 часов)', action: 'sleep8' },
+                { name: '💤 Вздремнуть (2 часа)', action: 'sleep2' }
+            ]
+        });
+
+        // Desk with computer
+        const desk = new THREE.Group();
+        const deskTop = new THREE.Mesh(
+            new THREE.BoxGeometry(2.5, 0.1, 1.2),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        deskTop.position.y = 1;
+        desk.add(deskTop);
+
+        const deskLegs = new THREE.Mesh(
+            new THREE.BoxGeometry(2.3, 1, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        deskLegs.position.set(0, 0.5, -0.5);
+        desk.add(deskLegs);
+
+        // Computer monitor
+        const monitor = new THREE.Mesh(
+            new THREE.BoxGeometry(1.2, 0.8, 0.08),
+            new THREE.MeshStandardMaterial({ color: 0x222222 })
+        );
+        monitor.position.set(0, 1.5, -0.3);
+        desk.add(monitor);
+
+        const screen = new THREE.Mesh(
+            new THREE.BoxGeometry(1.1, 0.7, 0.02),
+            new THREE.MeshBasicMaterial({ color: 0x1a1a2e })
+        );
+        screen.position.set(0, 1.5, -0.24);
+        desk.add(screen);
+
+        const stand = new THREE.Mesh(
+            new THREE.BoxGeometry(0.15, 0.4, 0.15),
+            new THREE.MeshStandardMaterial({ color: 0x222222 })
+        );
+        stand.position.set(0, 1.2, -0.3);
+        desk.add(stand);
+
+        // Keyboard
+        const keyboard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.6, 0.05, 0.2),
+            new THREE.MeshStandardMaterial({ color: 0x333333 })
+        );
+        keyboard.position.set(0, 1.08, 0.2);
+        desk.add(keyboard);
+
+        // Chair
+        const chairSeat = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.1, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+        );
+        chairSeat.position.set(0, 0.7, 1);
+        desk.add(chairSeat);
+
+        const chairBack = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.8, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x1565c0 })
+        );
+        chairBack.position.set(0, 1.1, 1.35);
+        desk.add(chairBack);
+
+        desk.position.set(5, 0, -4);
+        this.apartmentGroup.add(desk);
+        this.apartmentColliders.push({ minX: 3.5, maxX: 6.5, minZ: -5.5, maxZ: -3 });
+
+        this.interactables.push({
+            name: 'Компьютер', type: 'computer', indoor: true,
+            position: new THREE.Vector3(5, 0, -3), radius: 2,
+            actions: [
+                { name: '💹 Торговля на бирже', action: 'trade' },
+                { name: '📊 Посмотреть портфель', action: 'portfolio' },
+                { name: '🎮 Поиграть в игры', action: 'playGames' }
+            ]
+        });
+
+        // TV
+        const tv = new THREE.Group();
+        const tvScreen = new THREE.Mesh(
+            new THREE.BoxGeometry(2, 1.2, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x111111 })
+        );
+        tvScreen.position.y = 1.5;
+        tv.add(tvScreen);
+
+        const tvDisplay = new THREE.Mesh(
+            new THREE.BoxGeometry(1.9, 1.1, 0.02),
+            new THREE.MeshBasicMaterial({ color: 0x222244 })
+        );
+        tvDisplay.position.set(0, 1.5, 0.06);
+        tv.add(tvDisplay);
+
+        const tvStand = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 0.8, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x3e2723 })
+        );
+        tvStand.position.y = 0.4;
+        tv.add(tvStand);
+
+        tv.position.set(0, 0, -5.5);
+        this.apartmentGroup.add(tv);
+
+        this.interactables.push({
+            name: 'Телевизор', type: 'tv', indoor: true,
+            position: new THREE.Vector3(0, 0, -4.5), radius: 2,
+            actions: [
+                { name: '📺 Смотреть новости', action: 'watchNews' },
+                { name: '🎬 Смотреть фильм', action: 'watchMovie' }
+            ]
+        });
+
+        // Couch
+        const couch = new THREE.Group();
+        const couchSeat = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 0.5, 1.2),
+            new THREE.MeshStandardMaterial({ color: 0x7b1fa2 })
+        );
+        couchSeat.position.y = 0.4;
+        couch.add(couchSeat);
+
+        const couchBack = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 0.8, 0.3),
+            new THREE.MeshStandardMaterial({ color: 0x7b1fa2 })
+        );
+        couchBack.position.set(0, 0.8, -0.45);
+        couch.add(couchBack);
+
+        const armL = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.6, 1.2),
+            new THREE.MeshStandardMaterial({ color: 0x7b1fa2 })
+        );
+        armL.position.set(-1.35, 0.5, 0);
+        couch.add(armL);
+
+        const armR = armL.clone();
+        armR.position.x = 1.35;
+        couch.add(armR);
+
+        couch.position.set(0, 0, -2);
+        this.apartmentGroup.add(couch);
+        this.apartmentColliders.push({ minX: -1.8, maxX: 1.8, minZ: -3, maxZ: -1 });
+
+        this.interactables.push({
+            name: 'Диван', type: 'couch', indoor: true,
+            position: new THREE.Vector3(0, 0, -1), radius: 2,
+            actions: [{ name: '🛋️ Отдохнуть на диване', action: 'restCouch' }]
+        });
+
+        // Fridge
+        const fridge = new THREE.Mesh(
+            new THREE.BoxGeometry(1, 2.2, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0xeeeeee })
+        );
+        fridge.position.set(-6.5, 1.1, 3);
+        this.apartmentGroup.add(fridge);
+        this.apartmentColliders.push({ minX: -7.2, maxX: -5.8, minZ: 2.5, maxZ: 3.5 });
+
+        this.interactables.push({
+            name: 'Холодильник', type: 'fridge', indoor: true,
+            position: new THREE.Vector3(-6.5, 0, 4), radius: 1.5,
+            actions: [
+                { name: '🍎 Поесть', action: 'eatFromFridge' },
+                { name: '🥤 Выпить воды', action: 'drinkWater' }
+            ]
+        });
+
+        // Kitchen counter
+        const counter = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 1, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        counter.position.set(-5, 0.5, 5);
+        this.apartmentGroup.add(counter);
+
+        // Exit door
+        const door = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 2.5, 0.15),
+            new THREE.MeshStandardMaterial({ color: 0x5d4037 })
+        );
+        door.position.set(0, 1.25, 5.9);
+        this.apartmentGroup.add(door);
+
+        this.interactables.push({
+            name: 'Дверь', type: 'door', indoor: true,
+            position: new THREE.Vector3(0, 0, 5), radius: 2,
+            actions: [{ name: '🚪 Выйти на улицу', action: 'exitHome' }]
+        });
+    }
+
+    // ==================== NPCs ====================
+
+    createNPCs() {
+        const npcData = [
+            { color: 0xff6b6b, path: [[20, 20], [20, -20], [-20, -20], [-20, 20]] },
+            { color: 0x4ecdc4, path: [[-25, 0], [25, 0]] },
+            { color: 0xffe66d, path: [[0, 30], [0, -30]] },
+            { color: 0x95e1d3, path: [[40, 40], [-40, 40], [-40, -40], [40, -40]] },
         ];
 
-        lampPositions.forEach(pos => {
-            this.createLamp(pos[0], pos[1]);
-        });
+        npcData.forEach((data, i) => {
+            const npc = this.createNPCModel(data.color);
+            npc.position.set(data.path[0][0], 0, data.path[0][1]);
+            this.scene.add(npc);
 
-        // Cars (parked)
-        this.createCar(-25, 5, 0, 0xff0000);
-        this.createCar(25, -5, Math.PI, 0x0000ff);
-        this.createCar(5, 25, Math.PI/2, 0x00ff00);
-        this.createCar(-5, -25, -Math.PI/2, 0xffff00);
-
-        // Fountain at center
-        this.createFountain();
-    }
-
-    createTree(x, z) {
-        const tree = new THREE.Group();
-
-        // Trunk
-        const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 5, 8);
-        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.y = 2.5;
-        trunk.castShadow = true;
-        trunk.receiveShadow = true;
-        tree.add(trunk);
-
-        // Foliage layers
-        const foliageMat = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.8 });
-        
-        const foliage1 = new THREE.Mesh(new THREE.ConeGeometry(3, 4, 8), foliageMat);
-        foliage1.position.y = 6;
-        foliage1.castShadow = true;
-        tree.add(foliage1);
-
-        const foliage2 = new THREE.Mesh(new THREE.ConeGeometry(2.5, 3.5, 8), foliageMat);
-        foliage2.position.y = 8.5;
-        foliage2.castShadow = true;
-        tree.add(foliage2);
-
-        const foliage3 = new THREE.Mesh(new THREE.ConeGeometry(1.8, 3, 8), foliageMat);
-        foliage3.position.y = 10.5;
-        foliage3.castShadow = true;
-        tree.add(foliage3);
-
-        tree.position.set(x, 0, z);
-        tree.rotation.y = Math.random() * Math.PI * 2;
-        this.scene.add(tree);
-
-        // Small collision
-        this.colliders.push({
-            minX: x - 0.8,
-            maxX: x + 0.8,
-            minZ: z - 0.8,
-            maxZ: z + 0.8
+            this.npcs.push({
+                mesh: npc,
+                path: data.path,
+                pathIndex: 0,
+                speed: 2 + Math.random() * 2,
+                waiting: 0
+            });
         });
     }
 
-    createBench(x, z, rotation = 0) {
-        const bench = new THREE.Group();
-        const woodMat = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.8 });
-        const metalMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.3 });
-
-        // Seat planks
-        for (let i = -1; i <= 1; i++) {
-            const plank = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 0.4), woodMat);
-            plank.position.set(0, 0.8, i * 0.35);
-            plank.castShadow = true;
-            bench.add(plank);
-        }
-
-        // Back planks
-        for (let i = 0; i < 3; i++) {
-            const plank = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.12, 0.3), woodMat);
-            plank.position.set(0, 1.2 + i * 0.25, -0.55);
-            plank.rotation.x = 0.15;
-            plank.castShadow = true;
-            bench.add(plank);
-        }
-
-        // Legs
-        [[-1, 0], [1, 0]].forEach(([lx, lz]) => {
-            const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.9, 0.8), metalMat);
-            leg.position.set(lx, 0.45, lz);
-            leg.castShadow = true;
-            bench.add(leg);
-        });
-
-        bench.position.set(x, 0, z);
-        bench.rotation.y = rotation;
-        this.scene.add(bench);
-
-        // Collision
-        this.colliders.push({
-            minX: x - 1.5,
-            maxX: x + 1.5,
-            minZ: z - 0.8,
-            maxZ: z + 0.8
-        });
-    }
-
-    createLamp(x, z) {
-        const lamp = new THREE.Group();
-        const metalMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.9, roughness: 0.3 });
-
-        // Base
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.5, 8), metalMat);
-        base.position.y = 0.25;
-        base.castShadow = true;
-        lamp.add(base);
-
-        // Pole
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 7, 8), metalMat);
-        pole.position.y = 4;
-        pole.castShadow = true;
-        lamp.add(pole);
-
-        // Arm
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), metalMat);
-        arm.position.set(0.75, 7.3, 0);
-        lamp.add(arm);
-
-        // Light housing
-        const housing = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.3, 0.4, 0.6, 8),
-            metalMat
-        );
-        housing.position.set(1.4, 7.1, 0);
-        lamp.add(housing);
-
-        // Light bulb
-        const bulb = new THREE.Mesh(
-            new THREE.SphereGeometry(0.25, 8, 8),
-            new THREE.MeshBasicMaterial({ color: 0xffffcc })
-        );
-        bulb.position.set(1.4, 6.8, 0);
-        lamp.add(bulb);
-
-        // Point light
-        const light = new THREE.PointLight(0xffffcc, 0.4, 20);
-        light.position.set(1.4, 6.8, 0);
-        lamp.add(light);
-
-        lamp.position.set(x, 0, z);
-        this.scene.add(lamp);
-
-        // Collision
-        this.colliders.push({
-            minX: x - 0.5,
-            maxX: x + 0.5,
-            minZ: z - 0.5,
-            maxZ: z + 0.5
-        });
-    }
-
-    createCar(x, z, rotation, color) {
-        const car = new THREE.Group();
+    createNPCModel(color) {
+        const npc = new THREE.Group();
 
         // Body
-        const bodyMat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.8, roughness: 0.3 });
-        const body = new THREE.Mesh(new THREE.BoxGeometry(4, 1.2, 2), bodyMat);
-        body.position.y = 0.9;
+        const body = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.35, 1, 8),
+            new THREE.MeshStandardMaterial({ color })
+        );
+        body.position.y = 1;
         body.castShadow = true;
-        car.add(body);
-
-        // Cabin
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1.8), bodyMat);
-        cabin.position.set(-0.3, 1.8, 0);
-        cabin.castShadow = true;
-        car.add(cabin);
-
-        // Windows
-        const windowMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, metalness: 0.9, roughness: 0.1 });
-        const frontWindow = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 1.5), windowMat);
-        frontWindow.position.set(0.65, 1.8, 0);
-        car.add(frontWindow);
-
-        const backWindow = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 1.5), windowMat);
-        backWindow.position.set(-1.25, 1.8, 0);
-        car.add(backWindow);
-
-        // Wheels
-        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 });
-        const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 16);
-        [[-1.2, 1], [-1.2, -1], [1.2, 1], [1.2, -1]].forEach(([wx, wz]) => {
-            const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-            wheel.position.set(wx, 0.4, wz);
-            wheel.rotation.x = Math.PI / 2;
-            wheel.castShadow = true;
-            car.add(wheel);
-        });
-
-        // Headlights
-        const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
-        [-0.6, 0.6].forEach(lz => {
-            const headlight = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), lightMat);
-            headlight.position.set(2, 0.9, lz);
-            car.add(headlight);
-        });
-
-        car.position.set(x, 0, z);
-        car.rotation.y = rotation;
-        this.scene.add(car);
-
-        // Collision
-        const cos = Math.cos(rotation);
-        const sin = Math.sin(rotation);
-        this.colliders.push({
-            minX: x - 2.5,
-            maxX: x + 2.5,
-            minZ: z - 1.5,
-            maxZ: z + 1.5
-        });
-    }
-
-    createFountain() {
-        const fountain = new THREE.Group();
-
-        // Base pool
-        const poolGeo = new THREE.CylinderGeometry(5, 5.5, 1, 24);
-        const poolMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.5 });
-        const pool = new THREE.Mesh(poolGeo, poolMat);
-        pool.position.y = 0.5;
-        pool.castShadow = true;
-        pool.receiveShadow = true;
-        fountain.add(pool);
-
-        // Water
-        const waterGeo = new THREE.CylinderGeometry(4.5, 4.5, 0.8, 24);
-        const waterMat = new THREE.MeshStandardMaterial({ 
-            color: 0x4488ff, 
-            transparent: true, 
-            opacity: 0.7,
-            metalness: 0.3,
-            roughness: 0.2
-        });
-        const water = new THREE.Mesh(waterGeo, waterMat);
-        water.position.y = 0.6;
-        fountain.add(water);
-
-        // Center pillar
-        const pillar = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.5, 0.7, 3, 12),
-            new THREE.MeshStandardMaterial({ color: 0x888888 })
-        );
-        pillar.position.y = 2;
-        pillar.castShadow = true;
-        fountain.add(pillar);
-
-        // Top bowl
-        const bowl = new THREE.Mesh(
-            new THREE.CylinderGeometry(1.5, 1, 0.6, 16),
-            new THREE.MeshStandardMaterial({ color: 0x777777 })
-        );
-        bowl.position.y = 3.5;
-        bowl.castShadow = true;
-        fountain.add(bowl);
-
-        // Water spout
-        const spout = new THREE.Mesh(
-            new THREE.ConeGeometry(0.3, 1.5, 8),
-            new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.5 })
-        );
-        spout.position.y = 4.5;
-        fountain.add(spout);
-
-        fountain.position.set(0, 0, 0);
-        this.scene.add(fountain);
-
-        // Collision
-        this.colliders.push({
-            minX: -6,
-            maxX: 6,
-            minZ: -6,
-            maxZ: 6
-        });
-    }
-
-    createPlayer() {
-        const player = new THREE.Group();
-
-        // Legs
-        const legMat = new THREE.MeshStandardMaterial({ color: 0x1a365d });
-        const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.9, 8), legMat);
-        leftLeg.position.set(-0.2, 0.45, 0);
-        leftLeg.castShadow = true;
-        player.add(leftLeg);
-        this.playerLeftLeg = leftLeg;
-
-        const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.9, 8), legMat);
-        rightLeg.position.set(0.2, 0.45, 0);
-        rightLeg.castShadow = true;
-        player.add(rightLeg);
-        this.playerRightLeg = rightLeg;
-
-        // Body/Torso
-        const torsoMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
-        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.3, 0.8, 8), torsoMat);
-        torso.position.y = 1.3;
-        torso.castShadow = true;
-        player.add(torso);
-
-        // Arms
-        const armMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
-        const leftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 8), armMat);
-        leftArm.position.set(-0.45, 1.2, 0);
-        leftArm.rotation.z = 0.2;
-        leftArm.castShadow = true;
-        player.add(leftArm);
-        this.playerLeftArm = leftArm;
-
-        const rightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 8), armMat);
-        rightArm.position.set(0.45, 1.2, 0);
-        rightArm.rotation.z = -0.2;
-        rightArm.castShadow = true;
-        player.add(rightArm);
-        this.playerRightArm = rightArm;
+        npc.add(body);
 
         // Head
-        const headMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 12), headMat);
-        head.position.y = 2;
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.25, 12, 12),
+            new THREE.MeshStandardMaterial({ color: 0xffdbac })
+        );
+        head.position.y = 1.75;
         head.castShadow = true;
-        player.add(head);
+        npc.add(head);
+
+        // Legs
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const leftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), legMat);
+        leftLeg.position.set(-0.15, 0.3, 0);
+        npc.add(leftLeg);
+        npc.userData.leftLeg = leftLeg;
+
+        const rightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), legMat);
+        rightLeg.position.set(0.15, 0.3, 0);
+        npc.add(rightLeg);
+        npc.userData.rightLeg = rightLeg;
+
+        return npc;
+    }
+
+    updateNPCs(delta) {
+        this.npcs.forEach(npc => {
+            if (npc.waiting > 0) {
+                npc.waiting -= delta;
+                return;
+            }
+
+            const target = npc.path[npc.pathIndex];
+            const dx = target[0] - npc.mesh.position.x;
+            const dz = target[1] - npc.mesh.position.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+
+            if (dist < 0.5) {
+                npc.pathIndex = (npc.pathIndex + 1) % npc.path.length;
+                npc.waiting = 1 + Math.random() * 2;
+            } else {
+                const moveX = (dx / dist) * npc.speed * delta;
+                const moveZ = (dz / dist) * npc.speed * delta;
+                npc.mesh.position.x += moveX;
+                npc.mesh.position.z += moveZ;
+                npc.mesh.rotation.y = Math.atan2(dx, dz);
+
+                // Walk animation
+                const time = this.clock.getElapsedTime();
+                npc.mesh.userData.leftLeg.rotation.x = Math.sin(time * 8) * 0.4;
+                npc.mesh.userData.rightLeg.rotation.x = -Math.sin(time * 8) * 0.4;
+            }
+        });
+    }
+
+    // ==================== PLAYER ====================
+
+    createPlayer() {
+        this.player = new THREE.Group();
+
+        // Body
+        const body = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.3, 0.35, 1, 8),
+            new THREE.MeshStandardMaterial({ color: 0x3b82f6 })
+        );
+        body.position.y = 1;
+        body.castShadow = true;
+        this.player.add(body);
+
+        // Head
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.28, 12, 12),
+            new THREE.MeshStandardMaterial({ color: 0xffdbac })
+        );
+        head.position.y = 1.8;
+        head.castShadow = true;
+        this.player.add(head);
 
         // Hair
-        const hairMat = new THREE.MeshStandardMaterial({ color: 0x4a3728 });
-        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), hairMat);
-        hair.position.y = 2.1;
-        player.add(hair);
+        const hair = new THREE.Mesh(
+            new THREE.SphereGeometry(0.3, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+            new THREE.MeshStandardMaterial({ color: 0x4a3728 })
+        );
+        hair.position.y = 1.9;
+        this.player.add(hair);
 
         // Eyes
         const eyeMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
-        [-0.1, 0.1].forEach(ex => {
-            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), eyeMat);
-            eye.position.set(ex, 2.05, 0.25);
-            player.add(eye);
+        [-0.08, 0.08].forEach(x => {
+            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeMat);
+            eye.position.set(x, 1.85, 0.22);
+            this.player.add(eye);
         });
 
-        // Shadow plane
-        const shadowGeo = new THREE.CircleGeometry(0.5, 16);
-        const shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 });
-        const shadow = new THREE.Mesh(shadowGeo, shadowMat);
-        shadow.rotation.x = -Math.PI / 2;
-        shadow.position.y = 0.01;
-        player.add(shadow);
+        // Legs
+        const legMat = new THREE.MeshStandardMaterial({ color: 0x1e3a5a });
+        this.playerLeftLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), legMat);
+        this.playerLeftLeg.position.set(-0.15, 0.3, 0);
+        this.player.add(this.playerLeftLeg);
 
-        this.player = player;
+        this.playerRightLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), legMat);
+        this.playerRightLeg.position.set(0.15, 0.3, 0);
+        this.player.add(this.playerRightLeg);
+
+        // Arms
+        const armMat = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+        this.playerLeftArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), armMat);
+        this.playerLeftArm.position.set(-0.4, 1, 0);
+        this.player.add(this.playerLeftArm);
+
+        this.playerRightArm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), armMat);
+        this.playerRightArm.position.set(0.4, 1, 0);
+        this.player.add(this.playerRightArm);
+
         this.player.position.set(0, 0, 15);
         this.scene.add(this.player);
     }
 
-    // ============== PRICE SYSTEM ==============
+    // ==================== SYSTEMS ====================
 
-    initPriceHistory() {
+    initPrices() {
         Object.values(this.assets).flat().forEach(asset => {
             this.priceHistory[asset.id] = [];
             let price = asset.price;
             for (let i = 0; i < 50; i++) {
-                price = price * (1 + (Math.random() - 0.5) * asset.volatility);
+                price *= (1 + (Math.random() - 0.5) * asset.volatility);
                 this.priceHistory[asset.id].push(price);
             }
             this.priceHistory[asset.id].push(asset.price);
         });
     }
 
-    startPriceUpdates() {
+    startSystems() {
+        // Price updates
         setInterval(() => {
             Object.values(this.assets).flat().forEach(asset => {
-                const change = (Math.random() - 0.48) * asset.volatility;
-                asset.price = Math.max(0.001, asset.price * (1 + change));
-                
+                asset.price *= (1 + (Math.random() - 0.48) * asset.volatility);
                 this.priceHistory[asset.id].push(asset.price);
-                if (this.priceHistory[asset.id].length > 51) {
-                    this.priceHistory[asset.id].shift();
-                }
+                if (this.priceHistory[asset.id].length > 51) this.priceHistory[asset.id].shift();
             });
-
-            if (this.isModalOpen && !this.showingPortfolio) {
-                if (this.selectedAsset) {
-                    this.updateTradePanel();
-                } else {
-                    this.renderAssetList();
-                }
-            }
-
-            this.updateBalance();
+            if (this.isModalOpen) this.updateTradeUI();
             this.saveGame();
-        }, 2000);
+        }, 3000);
+
+        // Stats decay
+        setInterval(() => {
+            this.stats.energy = Math.max(0, this.stats.energy - 0.5);
+            this.stats.hunger = Math.max(0, this.stats.hunger - 0.3);
+            this.stats.happiness = Math.max(0, this.stats.happiness - 0.1);
+            this.updateStatsUI();
+            this.saveGame();
+        }, 5000);
+
+        // Time
+        setInterval(() => {
+            this.gameTime = (this.gameTime + 1) % (24 * 60);
+            this.updateTimeUI();
+        }, 1000);
+
+        this.updateStatsUI();
+        this.updateBalanceUI();
+        this.updateTimeUI();
     }
 
-    startNews() {
-        let newsIndex = 0;
-        const updateNews = () => {
-            document.getElementById('news-text').textContent = this.newsItems[newsIndex];
-            newsIndex = (newsIndex + 1) % this.newsItems.length;
-        };
-        updateNews();
-        setInterval(updateNews, 6000);
+    updateStatsUI() {
+        document.getElementById('energy-bar').style.width = this.stats.energy + '%';
+        document.getElementById('hunger-bar').style.width = this.stats.hunger + '%';
+        document.getElementById('happiness-bar').style.width = this.stats.happiness + '%';
     }
 
-    // ============== EVENTS ==============
+    updateBalanceUI() {
+        document.getElementById('balance-display').textContent = '$' + this.balance.toLocaleString();
+    }
+
+    updateTimeUI() {
+        const hours = Math.floor(this.gameTime / 60);
+        const mins = this.gameTime % 60;
+        const emoji = hours >= 6 && hours < 20 ? '🌅' : '🌙';
+        document.getElementById('time-display').textContent = `${emoji} ${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+    }
+
+    showMessage(text) {
+        const msg = document.getElementById('message');
+        msg.textContent = text;
+        msg.classList.remove('visible');
+        void msg.offsetWidth;
+        msg.classList.add('visible');
+        setTimeout(() => msg.classList.remove('visible'), 2000);
+    }
+
+    // ==================== EVENTS ====================
 
     setupEvents() {
         // Joystick
@@ -882,79 +938,86 @@ class TradingGame {
         let joystickActive = false;
         let joystickCenter = { x: 0, y: 0 };
 
-        const handleJoystickStart = (e) => {
+        const startJoystick = (e) => {
             e.preventDefault();
             joystickActive = true;
             const rect = joystickZone.getBoundingClientRect();
-            joystickCenter = {
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2
-            };
+            joystickCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
         };
 
-        const handleJoystickMove = (e) => {
+        const moveJoystick = (e) => {
             if (!joystickActive) return;
             e.preventDefault();
-
             const touch = e.touches ? e.touches[0] : e;
             let dx = touch.clientX - joystickCenter.x;
             let dy = touch.clientY - joystickCenter.y;
-            
             const dist = Math.sqrt(dx * dx + dy * dy);
             const maxDist = 45;
-            
-            if (dist > maxDist) {
-                dx = (dx / dist) * maxDist;
-                dy = (dy / dist) * maxDist;
-            }
-
+            if (dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
             joystickStick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-            
             this.moveDir.x = dx / maxDist;
             this.moveDir.z = dy / maxDist;
         };
 
-        const handleJoystickEnd = () => {
+        const endJoystick = () => {
             joystickActive = false;
             joystickStick.style.transform = 'translate(-50%, -50%)';
             this.moveDir.x = 0;
             this.moveDir.z = 0;
         };
 
-        joystickZone.addEventListener('touchstart', handleJoystickStart, { passive: false });
-        joystickZone.addEventListener('touchmove', handleJoystickMove, { passive: false });
-        joystickZone.addEventListener('touchend', handleJoystickEnd);
-        joystickZone.addEventListener('mousedown', handleJoystickStart);
-        window.addEventListener('mousemove', (e) => { if (joystickActive) handleJoystickMove(e); });
-        window.addEventListener('mouseup', handleJoystickEnd);
+        joystickZone.addEventListener('touchstart', startJoystick, { passive: false });
+        joystickZone.addEventListener('touchmove', moveJoystick, { passive: false });
+        joystickZone.addEventListener('touchend', endJoystick);
+        joystickZone.addEventListener('mousedown', startJoystick);
+        window.addEventListener('mousemove', (e) => { if (joystickActive) moveJoystick(e); });
+        window.addEventListener('mouseup', endJoystick);
+
+        // Camera rotation
+        const cameraZone = document.getElementById('camera-zone');
+        let cameraActive = false;
+        let cameraStart = { x: 0, y: 0 };
+
+        cameraZone.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            cameraActive = true;
+            cameraStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }, { passive: false });
+
+        cameraZone.addEventListener('touchmove', (e) => {
+            if (!cameraActive) return;
+            e.preventDefault();
+            const dx = e.touches[0].clientX - cameraStart.x;
+            this.cameraAngle -= dx * 0.01;
+            cameraStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }, { passive: false });
+
+        cameraZone.addEventListener('touchend', () => { cameraActive = false; });
 
         // Keyboard
         const keys = {};
-        window.addEventListener('keydown', (e) => {
-            keys[e.key.toLowerCase()] = true;
-            if (e.key === 'e' || e.key === 'Enter') this.tryInteract();
-        });
-
-        window.addEventListener('keyup', (e) => {
-            keys[e.key.toLowerCase()] = false;
-        });
+        window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; if (e.key === 'e') this.interact(); });
+        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
         setInterval(() => {
-            if (this.isModalOpen) return;
-            this.moveDir.x = 0;
-            this.moveDir.z = 0;
+            if (this.isModalOpen || this.isMenuOpen) return;
+            this.moveDir.x = 0; this.moveDir.z = 0;
             if (keys['w'] || keys['arrowup']) this.moveDir.z = -1;
             if (keys['s'] || keys['arrowdown']) this.moveDir.z = 1;
             if (keys['a'] || keys['arrowleft']) this.moveDir.x = -1;
             if (keys['d'] || keys['arrowright']) this.moveDir.x = 1;
+            if (keys['q']) this.cameraAngle += 0.03;
+            if (keys['e']) this.cameraAngle -= 0.03;
         }, 16);
 
-        // UI buttons
-        document.getElementById('interact-btn').addEventListener('click', () => this.tryInteract());
-        document.getElementById('portfolio-btn').addEventListener('click', () => this.showPortfolio());
+        // Interact button
+        document.getElementById('interact-btn').addEventListener('click', () => this.interact());
+
+        // Close menus
+        document.getElementById('close-interact-menu').addEventListener('click', () => this.closeInteractMenu());
         document.getElementById('close-modal').addEventListener('click', () => this.closeModal());
 
-        // Tabs
+        // Trade UI
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -983,59 +1046,183 @@ class TradingGame {
         });
     }
 
-    // ============== COLLISION ==============
+    interact() {
+        if (!this.nearObject) return;
+        this.showInteractMenu(this.nearObject);
+    }
 
-    checkCollision(newX, newZ) {
-        const playerRadius = 0.5;
+    showInteractMenu(obj) {
+        this.isMenuOpen = true;
+        document.getElementById('interact-menu-title').textContent = obj.name;
         
-        for (const col of this.colliders) {
-            if (newX + playerRadius > col.minX && 
-                newX - playerRadius < col.maxX &&
-                newZ + playerRadius > col.minZ && 
-                newZ - playerRadius < col.maxZ) {
-                return true;
-            }
-        }
-        return false;
+        const optionsDiv = document.getElementById('interact-menu-options');
+        optionsDiv.innerHTML = '';
+        
+        obj.actions.forEach(action => {
+            const btn = document.createElement('button');
+            btn.className = 'menu-option';
+            btn.textContent = action.name;
+            if (action.cost && action.cost > this.balance) btn.disabled = true;
+            btn.addEventListener('click', () => this.executeAction(action));
+            optionsDiv.appendChild(btn);
+        });
+
+        document.getElementById('interact-menu').classList.add('visible');
     }
 
-    // ============== TRADING ==============
-
-    tryInteract() {
-        if (this.nearBuilding && this.nearBuilding.userData.type !== 'shop') {
-            this.openTrading(this.nearBuilding.userData.type);
-        }
+    closeInteractMenu() {
+        this.isMenuOpen = false;
+        document.getElementById('interact-menu').classList.remove('visible');
     }
 
-    openTrading(type) {
+    executeAction(action) {
+        this.closeInteractMenu();
+
+        if (action.cost && action.cost > this.balance) {
+            this.showMessage('❌ Недостаточно денег!');
+            return;
+        }
+        if (action.cost) this.balance -= action.cost;
+
+        switch(action.action) {
+            case 'enterHome':
+                this.enterApartment();
+                break;
+            case 'exitHome':
+                this.exitApartment();
+                break;
+            case 'sleep8':
+                this.stats.energy = 100;
+                this.gameTime = (this.gameTime + 480) % (24 * 60);
+                this.showMessage('😴 Вы выспались!');
+                break;
+            case 'sleep2':
+                this.stats.energy = Math.min(100, this.stats.energy + 40);
+                this.gameTime = (this.gameTime + 120) % (24 * 60);
+                this.showMessage('💤 Вы вздремнули');
+                break;
+            case 'trade':
+                this.openTrading();
+                break;
+            case 'portfolio':
+                this.openPortfolio();
+                break;
+            case 'playGames':
+                this.stats.happiness = Math.min(100, this.stats.happiness + 15);
+                this.stats.energy = Math.max(0, this.stats.energy - 10);
+                this.gameTime = (this.gameTime + 60) % (24 * 60);
+                this.showMessage('🎮 Вы поиграли в игры!');
+                break;
+            case 'watchNews':
+            case 'watchMovie':
+                this.stats.happiness = Math.min(100, this.stats.happiness + 10);
+                this.stats.energy = Math.max(0, this.stats.energy - 5);
+                this.gameTime = (this.gameTime + 30) % (24 * 60);
+                this.showMessage('📺 Вы посмотрели ТВ');
+                break;
+            case 'restCouch':
+                this.stats.energy = Math.min(100, this.stats.energy + 15);
+                this.stats.happiness = Math.min(100, this.stats.happiness + 5);
+                this.showMessage('🛋️ Вы отдохнули');
+                break;
+            case 'eatFromFridge':
+                this.stats.hunger = Math.min(100, this.stats.hunger + 30);
+                this.showMessage('🍎 Вы поели');
+                break;
+            case 'drinkWater':
+                this.stats.hunger = Math.min(100, this.stats.hunger + 10);
+                this.showMessage('💧 Освежились!');
+                break;
+            case 'buyFood':
+                this.stats.hunger = Math.min(100, this.stats.hunger + 40);
+                this.showMessage('🍎 Купили еду!');
+                break;
+            case 'buyCoffee':
+                this.stats.energy = Math.min(100, this.stats.energy + 20);
+                this.showMessage('☕ Выпили кофе!');
+                break;
+            case 'eatMeal':
+                this.stats.hunger = 100;
+                this.stats.happiness = Math.min(100, this.stats.happiness + 10);
+                this.showMessage('🍕 Вкусно поели!');
+                break;
+            case 'drink':
+                this.stats.happiness = Math.min(100, this.stats.happiness + 15);
+                this.showMessage('🍺 Расслабились!');
+                break;
+            case 'walk':
+                this.stats.happiness = Math.min(100, this.stats.happiness + 10);
+                this.stats.energy = Math.max(0, this.stats.energy - 5);
+                this.showMessage('🚶 Приятная прогулка!');
+                break;
+            case 'meditate':
+                this.stats.happiness = Math.min(100, this.stats.happiness + 20);
+                this.stats.energy = Math.min(100, this.stats.energy + 10);
+                this.showMessage('🧘 Медитация помогла!');
+                break;
+            case 'sitBench':
+                this.stats.energy = Math.min(100, this.stats.energy + 10);
+                this.showMessage('🪑 Посидели, отдохнули');
+                break;
+            case 'buyDrink':
+                this.stats.hunger = Math.min(100, this.stats.hunger + 15);
+                this.showMessage('🥤 Купили напиток');
+                break;
+            case 'buySnack':
+                this.stats.hunger = Math.min(100, this.stats.hunger + 10);
+                this.showMessage('🍫 Купили снэк');
+                break;
+        }
+
+        this.updateStatsUI();
+        this.updateBalanceUI();
+        this.updateTimeUI();
+        this.saveGame();
+    }
+
+    enterApartment() {
+        this.isInside = true;
+        this.apartmentGroup.visible = true;
+        this.player.position.set(0, 0, 3);
+        
+        // Hide outdoor
+        this.buildings.forEach(b => b.group.visible = false);
+        this.npcs.forEach(n => n.mesh.visible = false);
+        
+        this.showMessage('🏠 Вы дома');
+    }
+
+    exitApartment() {
+        this.isInside = false;
+        this.apartmentGroup.visible = false;
+        this.player.position.set(-30, 0, -5);
+        
+        // Show outdoor
+        this.buildings.forEach(b => b.group.visible = true);
+        this.npcs.forEach(n => n.mesh.visible = true);
+        
+        this.showMessage('🚪 Вышли на улицу');
+    }
+
+    // ==================== TRADING ====================
+
+    openTrading() {
         this.isModalOpen = true;
-        this.showingPortfolio = false;
-        this.currentAssetType = type;
-        this.selectedAsset = null;
-
         document.getElementById('modal').classList.add('visible');
-        document.getElementById('modal-title').textContent = this.nearBuilding.userData.name;
+        document.getElementById('modal-title').textContent = '💹 Биржа';
         document.getElementById('asset-selection').style.display = 'block';
         document.getElementById('trade-panel').classList.remove('visible');
         document.getElementById('portfolio-panel').classList.remove('visible');
-
-        document.querySelectorAll('.tab').forEach(t => {
-            t.classList.toggle('active', t.dataset.type === type);
-        });
-
         this.renderAssetList();
     }
 
-    showPortfolio() {
+    openPortfolio() {
         this.isModalOpen = true;
-        this.showingPortfolio = true;
-
         document.getElementById('modal').classList.add('visible');
-        document.getElementById('modal-title').textContent = 'Мой портфель';
+        document.getElementById('modal-title').textContent = '📊 Портфель';
         document.getElementById('asset-selection').style.display = 'none';
         document.getElementById('trade-panel').classList.remove('visible');
         document.getElementById('portfolio-panel').classList.add('visible');
-
         this.renderPortfolio();
     }
 
@@ -1050,11 +1237,8 @@ class TradingGame {
         
         list.innerHTML = assets.map(asset => {
             const history = this.priceHistory[asset.id];
-            const prevPrice = history[history.length - 2] || asset.price;
-            const change = ((asset.price - prevPrice) / prevPrice) * 100;
-            const changeClass = change >= 0 ? 'up' : 'down';
-            const changeSign = change >= 0 ? '+' : '';
-
+            const prev = history[history.length - 2] || asset.price;
+            const change = ((asset.price - prev) / prev) * 100;
             return `
                 <div class="asset-item" data-id="${asset.id}">
                     <div class="asset-info">
@@ -1066,7 +1250,7 @@ class TradingGame {
                     </div>
                     <div class="asset-price">
                         <div class="asset-current">$${this.formatPrice(asset.price)}</div>
-                        <div class="asset-change ${changeClass}">${changeSign}${change.toFixed(2)}%</div>
+                        <div class="asset-change ${change >= 0 ? 'up' : 'down'}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</div>
                     </div>
                 </div>
             `;
@@ -1074,8 +1258,7 @@ class TradingGame {
 
         list.querySelectorAll('.asset-item').forEach(item => {
             item.addEventListener('click', () => {
-                const assetId = item.dataset.id;
-                this.selectedAsset = assets.find(a => a.id === assetId);
+                this.selectedAsset = assets.find(a => a.id === item.dataset.id);
                 this.showTradePanel();
             });
         });
@@ -1085,287 +1268,235 @@ class TradingGame {
         document.getElementById('asset-selection').style.display = 'none';
         document.getElementById('trade-panel').classList.add('visible');
         document.getElementById('trade-amount').value = '1';
-        this.updateTradePanel();
+        this.updateTradeUI();
     }
 
-    updateTradePanel() {
+    updateTradeUI() {
         if (!this.selectedAsset) return;
-        
         document.getElementById('trade-asset-name').textContent = this.selectedAsset.name;
         document.getElementById('trade-asset-price').textContent = '$' + this.formatPrice(this.selectedAsset.price);
-        
         this.updateTradeTotal();
-        this.drawPriceChart();
+        this.drawChart();
         this.updateHoldingInfo();
     }
 
     updateTradeTotal() {
         if (!this.selectedAsset) return;
         const amount = parseFloat(document.getElementById('trade-amount').value) || 0;
-        const total = amount * this.selectedAsset.price;
-        document.getElementById('trade-total').textContent = `Итого: $${this.formatPrice(total)}`;
+        document.getElementById('trade-total').textContent = `Итого: $${this.formatPrice(amount * this.selectedAsset.price)}`;
     }
 
     updateHoldingInfo() {
-        const holding = this.portfolio[this.selectedAsset.id];
-        const infoEl = document.getElementById('holding-info');
-        
-        if (holding && holding.amount > 0) {
-            const currentValue = holding.amount * this.selectedAsset.price;
-            const profit = currentValue - holding.cost;
-            const profitPct = (profit / holding.cost) * 100;
-            const profitClass = profit >= 0 ? 'color:#4ade80' : 'color:#f87171';
-            
-            infoEl.innerHTML = `
-                <strong>Ваши активы:</strong><br>
-                ${holding.amount.toFixed(4)} ${this.selectedAsset.symbol}<br>
-                Стоимость: $${this.formatPrice(currentValue)}<br>
-                <span style="${profitClass}">Прибыль: ${profit >= 0 ? '+' : ''}$${this.formatPrice(profit)} (${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}%)</span>
-            `;
+        const h = this.portfolio[this.selectedAsset.id];
+        const el = document.getElementById('holding-info');
+        if (h && h.amount > 0) {
+            const val = h.amount * this.selectedAsset.price;
+            const profit = val - h.cost;
+            el.innerHTML = `<strong>У вас:</strong> ${h.amount.toFixed(4)} ${this.selectedAsset.symbol}<br>
+                Стоимость: $${this.formatPrice(val)}<br>
+                <span style="color:${profit >= 0 ? '#4ade80' : '#f87171'}">
+                    ${profit >= 0 ? '+' : ''}$${this.formatPrice(profit)}
+                </span>`;
         } else {
-            infoEl.textContent = 'У вас нет этого актива';
+            el.textContent = 'У вас нет этого актива';
         }
     }
 
-    drawPriceChart() {
+    drawChart() {
         const canvas = document.getElementById('price-chart');
         const ctx = canvas.getContext('2d');
         const history = this.priceHistory[this.selectedAsset.id];
-        
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         const min = Math.min(...history) * 0.99;
         const max = Math.max(...history) * 1.01;
         const range = max - min || 1;
-        
-        // Gradient fill
-        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         const isUp = history[history.length - 1] >= history[0];
+        
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, isUp ? 'rgba(74, 222, 128, 0.3)' : 'rgba(248, 113, 113, 0.3)');
-        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        gradient.addColorStop(1, 'transparent');
 
         ctx.beginPath();
         ctx.moveTo(0, canvas.height);
-        
-        history.forEach((price, i) => {
-            const x = (i / (history.length - 1)) * canvas.width;
-            const y = canvas.height - ((price - min) / range) * (canvas.height - 10) - 5;
-            ctx.lineTo(x, y);
+        history.forEach((p, i) => {
+            ctx.lineTo((i / (history.length - 1)) * canvas.width, canvas.height - ((p - min) / range) * (canvas.height - 10) - 5);
         });
-        
         ctx.lineTo(canvas.width, canvas.height);
         ctx.fillStyle = gradient;
         ctx.fill();
 
-        // Line
         ctx.strokeStyle = isUp ? '#4ade80' : '#f87171';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        
-        history.forEach((price, i) => {
+        history.forEach((p, i) => {
             const x = (i / (history.length - 1)) * canvas.width;
-            const y = canvas.height - ((price - min) / range) * (canvas.height - 10) - 5;
-            if (i === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
+            const y = canvas.height - ((p - min) / range) * (canvas.height - 10) - 5;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         });
-        
         ctx.stroke();
     }
 
     executeTrade(type) {
         const amount = parseFloat(document.getElementById('trade-amount').value);
         if (!amount || amount <= 0) return;
-
         const total = amount * this.selectedAsset.price;
 
         if (type === 'buy') {
-            if (total > this.balance) {
-                alert('Недостаточно средств!');
-                return;
-            }
-            
+            if (total > this.balance) { alert('Недостаточно средств!'); return; }
             this.balance -= total;
-            
             if (!this.portfolio[this.selectedAsset.id]) {
-                this.portfolio[this.selectedAsset.id] = { 
-                    amount: 0, 
-                    cost: 0, 
-                    symbol: this.selectedAsset.symbol, 
-                    name: this.selectedAsset.name 
-                };
+                this.portfolio[this.selectedAsset.id] = { amount: 0, cost: 0, symbol: this.selectedAsset.symbol, name: this.selectedAsset.name };
             }
             this.portfolio[this.selectedAsset.id].amount += amount;
             this.portfolio[this.selectedAsset.id].cost += total;
-            
+            this.showMessage('✅ Куплено!');
         } else {
-            const holding = this.portfolio[this.selectedAsset.id];
-            if (!holding || holding.amount < amount) {
-                alert('Недостаточно активов для продажи!');
-                return;
-            }
-            
-            const costPerUnit = holding.cost / holding.amount;
-            holding.amount -= amount;
-            holding.cost -= costPerUnit * amount;
+            const h = this.portfolio[this.selectedAsset.id];
+            if (!h || h.amount < amount) { alert('Недостаточно активов!'); return; }
+            const costPer = h.cost / h.amount;
+            h.amount -= amount;
+            h.cost -= costPer * amount;
             this.balance += total;
-            
-            if (holding.amount <= 0.0001) {
-                delete this.portfolio[this.selectedAsset.id];
-            }
+            if (h.amount <= 0.0001) delete this.portfolio[this.selectedAsset.id];
+            this.showMessage('✅ Продано!');
         }
 
-        this.updateBalance();
+        this.updateBalanceUI();
         this.updateHoldingInfo();
         this.saveGame();
     }
 
     renderPortfolio() {
-        const listEl = document.getElementById('holdings-list');
-        const holdings = Object.entries(this.portfolio);
-        
-        let totalValue = this.balance;
-        
-        let html = `
-            <div class="holding-item" style="background:rgba(59,130,246,0.2);border:1px solid rgba(59,130,246,0.3);">
-                <div class="holding-header">
-                    <span class="holding-name">💵 Наличные</span>
-                    <span class="holding-value">$${this.formatPrice(this.balance)}</span>
-                </div>
-            </div>
-        `;
-        
-        holdings.forEach(([id, holding]) => {
+        let total = this.balance;
+        let html = `<div class="holding-item" style="background:rgba(59,130,246,0.2)">
+            <div class="holding-header"><span class="holding-name">💵 Наличные</span><span class="holding-value">$${this.formatPrice(this.balance)}</span></div>
+        </div>`;
+
+        Object.entries(this.portfolio).forEach(([id, h]) => {
             const asset = Object.values(this.assets).flat().find(a => a.id === id);
             if (!asset) return;
-            
-            const value = holding.amount * asset.price;
-            const profit = value - holding.cost;
-            const profitPct = holding.cost > 0 ? (profit / holding.cost) * 100 : 0;
-            totalValue += value;
-            
-            html += `
-                <div class="holding-item">
-                    <div class="holding-header">
-                        <span class="holding-name">${holding.name}</span>
-                        <span class="holding-value">$${this.formatPrice(value)}</span>
-                    </div>
-                    <div class="holding-details">
-                        <span>${holding.amount.toFixed(4)} ${holding.symbol}</span>
-                        <span style="color:${profit >= 0 ? '#4ade80' : '#f87171'}">${profit >= 0 ? '+' : ''}${profitPct.toFixed(2)}%</span>
-                    </div>
-                </div>
-            `;
+            const val = h.amount * asset.price;
+            const profit = val - h.cost;
+            total += val;
+            html += `<div class="holding-item">
+                <div class="holding-header"><span class="holding-name">${h.name}</span><span class="holding-value">$${this.formatPrice(val)}</span></div>
+                <div class="holding-details"><span>${h.amount.toFixed(4)} ${h.symbol}</span><span style="color:${profit >= 0 ? '#4ade80' : '#f87171'}">${profit >= 0 ? '+' : ''}${((profit / h.cost) * 100).toFixed(2)}%</span></div>
+            </div>`;
         });
 
-        if (holdings.length === 0) {
-            html += '<div style="color:rgba(255,255,255,0.5);text-align:center;padding:20px;">Инвестиций пока нет</div>';
+        document.getElementById('portfolio-value').textContent = '$' + this.formatPrice(total);
+        document.getElementById('holdings-list').innerHTML = html;
+    }
+
+    formatPrice(p) {
+        if (p >= 1000) return p.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (p >= 1) return p.toFixed(2);
+        return p.toFixed(4);
+    }
+
+    // ==================== UPDATE ====================
+
+    checkCollision(newX, newZ) {
+        const r = 0.5;
+        const colliders = this.isInside ? this.apartmentColliders : this.colliders;
+        for (const c of colliders) {
+            if (newX + r > c.minX && newX - r < c.maxX && newZ + r > c.minZ && newZ - r < c.maxZ) return true;
         }
-
-        document.getElementById('portfolio-value').textContent = '$' + this.formatPrice(totalValue);
-        listEl.innerHTML = html;
+        return false;
     }
-
-    updateBalance() {
-        document.getElementById('balance').textContent = '$' + this.formatPrice(this.balance);
-    }
-
-    formatPrice(price) {
-        if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
-        if (price >= 1) return price.toFixed(2);
-        return price.toFixed(4);
-    }
-
-    // ============== UPDATE ==============
 
     updatePlayer(delta) {
-        if (this.isModalOpen) return;
+        if (this.isModalOpen || this.isMenuOpen) return;
 
         const isMoving = this.moveDir.x !== 0 || this.moveDir.z !== 0;
 
         if (isMoving) {
-            const moveX = this.moveDir.x * this.playerSpeed * delta;
-            const moveZ = this.moveDir.z * this.playerSpeed * delta;
+            // Rotate movement by camera angle
+            const cos = Math.cos(this.cameraAngle);
+            const sin = Math.sin(this.cameraAngle);
+            const rotX = this.moveDir.x * cos - this.moveDir.z * sin;
+            const rotZ = this.moveDir.x * sin + this.moveDir.z * cos;
 
-            let newX = this.player.position.x + moveX;
-            let newZ = this.player.position.z + moveZ;
+            const moveX = rotX * this.playerSpeed * delta;
+            const moveZ = rotZ * this.playerSpeed * delta;
 
-            // Collision check - try X and Z separately
-            if (!this.checkCollision(newX, this.player.position.z)) {
-                this.player.position.x = newX;
+            if (!this.checkCollision(this.player.position.x + moveX, this.player.position.z)) {
+                this.player.position.x += moveX;
             }
-            if (!this.checkCollision(this.player.position.x, newZ)) {
-                this.player.position.z = newZ;
+            if (!this.checkCollision(this.player.position.x, this.player.position.z + moveZ)) {
+                this.player.position.z += moveZ;
             }
 
-            // Boundary
-            const limit = 120;
-            this.player.position.x = Math.max(-limit, Math.min(limit, this.player.position.x));
-            this.player.position.z = Math.max(-limit, Math.min(limit, this.player.position.z));
+            // Boundaries
+            if (this.isInside) {
+                this.player.position.x = Math.max(-7, Math.min(7, this.player.position.x));
+                this.player.position.z = Math.max(-5.5, Math.min(5.5, this.player.position.z));
+            } else {
+                this.player.position.x = Math.max(-90, Math.min(90, this.player.position.x));
+                this.player.position.z = Math.max(-90, Math.min(90, this.player.position.z));
+            }
 
-            // Rotation
-            this.player.rotation.y = Math.atan2(this.moveDir.x, this.moveDir.z);
+            this.player.rotation.y = Math.atan2(rotX, rotZ);
 
             // Walk animation
-            const walkSpeed = 12;
-            const time = this.clock.getElapsedTime();
-            this.playerLeftLeg.rotation.x = Math.sin(time * walkSpeed) * 0.5;
-            this.playerRightLeg.rotation.x = -Math.sin(time * walkSpeed) * 0.5;
-            this.playerLeftArm.rotation.x = -Math.sin(time * walkSpeed) * 0.3;
-            this.playerRightArm.rotation.x = Math.sin(time * walkSpeed) * 0.3;
+            const t = this.clock.getElapsedTime();
+            this.playerLeftLeg.rotation.x = Math.sin(t * 10) * 0.5;
+            this.playerRightLeg.rotation.x = -Math.sin(t * 10) * 0.5;
+            this.playerLeftArm.rotation.x = -Math.sin(t * 10) * 0.3;
+            this.playerRightArm.rotation.x = Math.sin(t * 10) * 0.3;
         } else {
-            // Reset pose
             this.playerLeftLeg.rotation.x = 0;
             this.playerRightLeg.rotation.x = 0;
             this.playerLeftArm.rotation.x = 0;
             this.playerRightArm.rotation.x = 0;
         }
 
-        // Check near building
-        let near = null;
-        this.buildings.forEach(building => {
-            const zone = building.userData.interactZone;
-            if (this.player.position.x > zone.minX && this.player.position.x < zone.maxX &&
-                this.player.position.z > zone.minZ && this.player.position.z < zone.maxZ) {
-                near = building;
+        // Find nearby interactable
+        const relevantObjects = this.interactables.filter(i => this.isInside ? i.indoor : !i.indoor);
+        let nearest = null;
+        let nearestDist = Infinity;
+
+        relevantObjects.forEach(obj => {
+            const dist = this.player.position.distanceTo(obj.position);
+            if (dist < obj.radius && dist < nearestDist) {
+                nearest = obj;
+                nearestDist = dist;
             }
         });
 
-        this.nearBuilding = near;
+        this.nearObject = nearest;
+        const btn = document.getElementById('interact-btn');
+        const loc = document.getElementById('location-display');
         
-        const interactBtn = document.getElementById('interact-btn');
-        const locationEl = document.getElementById('location');
-        
-        if (near && near.userData.type !== 'shop') {
-            interactBtn.classList.add('visible');
-            locationEl.classList.add('visible');
-            locationEl.textContent = '📍 ' + near.userData.name;
+        if (nearest) {
+            btn.classList.add('visible');
+            btn.textContent = nearest.name;
+            loc.classList.add('visible');
+            loc.textContent = '📍 ' + nearest.name;
         } else {
-            interactBtn.classList.remove('visible');
-            locationEl.classList.remove('visible');
+            btn.classList.remove('visible');
+            loc.classList.remove('visible');
         }
 
-        // Camera follow
-        const camOffset = new THREE.Vector3(0, 12, 18);
-        const targetPos = this.player.position.clone().add(camOffset);
-        this.camera.position.lerp(targetPos, 4 * delta);
-        this.camera.lookAt(
-            this.player.position.x, 
-            this.player.position.y + 1.5, 
-            this.player.position.z
-        );
+        // Camera
+        const camX = this.player.position.x + Math.sin(this.cameraAngle) * this.cameraDistance;
+        const camZ = this.player.position.z + Math.cos(this.cameraAngle) * this.cameraDistance;
+        const camY = this.player.position.y + this.cameraDistance * this.cameraPitch;
+        
+        this.camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 5 * delta);
+        this.camera.lookAt(this.player.position.x, this.player.position.y + 1.5, this.player.position.z);
     }
 
     animate() {
         requestAnimationFrame(() => this.animate());
-        
         const delta = this.clock.getDelta();
+
         this.updatePlayer(delta);
-        
+        if (!this.isInside) this.updateNPCs(delta);
+
         this.renderer.render(this.scene, this.camera);
     }
 }
 
-// Start
-window.addEventListener('load', () => {
-    window.game = new TradingGame();
-});
+window.addEventListener('load', () => { window.game = new LifeSimulator(); });
