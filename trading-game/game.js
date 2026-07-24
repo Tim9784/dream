@@ -1,5 +1,7 @@
-// Life Simulator - Full Featured Game
+// Life Simulator - Full Featured Game v2
 // Trading, apartment life, NPCs, interactions
+
+console.log('Life Simulator v2 loading...');
 
 class LifeSimulator {
     constructor() {
