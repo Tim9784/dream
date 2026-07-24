@@ -118,9 +118,9 @@ class LifeSimulator {
         this.setupEvents();
         this.startSystems();
 
-        setTimeout(() => {
-            document.getElementById('loading').classList.add('hidden');
-        }, 500);
+        // Hide loading when first frame renders
+        this.renderer.render(this.scene, this.camera);
+        document.getElementById('loading').classList.add('hidden');
 
         this.animate();
     }

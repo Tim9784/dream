@@ -391,7 +391,15 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        window.onerror = function(msg, url, line) {
+            document.getElementById('loading').innerHTML = '<h1>❌ Ошибка</h1><p>' + msg + '</p>';
+        };
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" 
+            onload="console.log('Three.js loaded')" 
+            onerror="document.getElementById('loading').innerHTML='<h1>❌ Ошибка загрузки</h1><p>Проверьте интернет</p>'">
+    </script>
     <script src="game.js"></script>
 </body>
 </html>
