@@ -131,6 +131,23 @@ def current_user() -> dict[str, Any] | None:
     return getattr(g, "user", None)
 
 
+def user_can_peek_cards(user: dict[str, Any] | None = None) -> bool:
+    """Только зарегистрированный Тимофей может смотреть чужие карты в дураке."""
+    u = user if user is not None else current_user()
+    if not u:
+        return False
+    return bool(u.get("can_peek_cards"))
+
+
+def peek_requested(data: dict[str, Any] | None = None) -> bool:
+    raw = request.args.get("peek")
+    if raw is None and data is not None:
+        raw = data.get("peek")
+    if isinstance(raw, bool):
+        return raw
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def attach_user_to_player(player: dict[str, Any], user: dict[str, Any] | None) -> None:
     if not user:
         return
@@ -391,7 +408,24 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
             "rematch": bool((room.get("rematch_votes") or {}).get(slot)),
         }
 
-    game_view = mod.public_view(room, viewer)
+    user = current_user()
+    can_peek = False
+    reveal_hands = False
+    if game_id == "durak" and viewer and user_can_peek_cards(user):
+        seat = (room.get("players") or {}).get(viewer) or {}
+        # только если место в комнате привязано к этому аккаунту
+        if int(seat.get("user_id") or 0) == int(user.get("id") or 0):
+            can_peek = True
+            reveal_hands = bool(getattr(g, "want_peek", False))
+
+    if game_id == "durak":
+        game_view = mod.public_view(room, viewer, reveal_hands=reveal_hands)
+    else:
+        game_view = mod.public_view(room, viewer)
+    if isinstance(game_view, dict):
+        game_view["can_peek"] = can_peek
+        game_view["peek"] = bool(reveal_hands and can_peek)
+
     win_pct = None
     if room.get("vs_ai") and viewer and room["players"].get(viewer) and not room["players"][viewer].get("ai"):
         if hasattr(mod, "win_chance"):
@@ -427,6 +461,8 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
             and not room.get("vs_local")
             and seats_ready(room)
         ),
+        "can_peek_cards": can_peek,
+        "peek_cards": bool(reveal_hands and can_peek),
         "rematch_votes": {s: bool(votes.get(s)) for s in human_slots},
         "rematch_ready": bool(human_slots) and all(votes.get(s) for s in human_slots),
         "win_chance": win_pct,
@@ -512,6 +548,7 @@ def run_ai_turns(room: dict[str, Any]) -> None:
 def security_gate():
     g.client_ip = client_ip()
     g.user = None
+    g.want_peek = False
     # отсекаем явно битые пути
     path = request.path or "/"
     if ".." in path or path.startswith("//"):
@@ -1027,6 +1064,7 @@ def get_room(code: str):
             dirty = True
     token = str(request.args.get("token", ""))
     slot = player_slot(room, token) if token else None
+    g.want_peek = peek_requested()
     # обновляем TTL комнаты, чтобы длинная партия не протухла
     if slot:
         try:
@@ -1049,6 +1087,7 @@ def room_action(code: str):
     data = read_json()
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    g.want_peek = peek_requested(data)
     token = str(data.get("token", ""))
     slot = player_slot(room, token)
     if not slot:
@@ -1087,6 +1126,7 @@ def rematch_room(code: str):
     data = read_json()
     if data is None:
         return jsonify({"ok": False, "error": "Неверный запрос"}), 400
+    g.want_peek = peek_requested(data)
     token = str(data.get("token", ""))
     slot = player_slot(room, token)
     if not slot:

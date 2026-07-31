@@ -515,7 +515,7 @@ def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tup
     return False, "Неизвестное действие"
 
 
-def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
+def public_view(room: dict[str, Any], viewer: str | None, reveal_hands: bool = False) -> dict[str, Any]:
     st = room["state"]
     order = list(st.get("order") or _seat_list(room))
     hands_pub = {}
@@ -523,7 +523,7 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     for slot in order:
         hand = st["hands"].get(slot) or []
         hand_counts[slot] = len(hand)
-        if viewer == slot:
+        if viewer == slot or reveal_hands:
             hands_pub[slot] = list(hand)
         else:
             hands_pub[slot] = [None] * len(hand)
@@ -543,6 +543,7 @@ def public_view(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "expect": st.get("expect"),
         "max_players": st.get("max_players") or len(order),
         "legal": legal,
+        "peek": bool(reveal_hands),
         "labels": {"suits": SUIT_LABEL, "ranks": RANK_LABEL},
     }
 

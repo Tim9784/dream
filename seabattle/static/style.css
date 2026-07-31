@@ -604,8 +604,12 @@ html[data-theme="light"] .coord.on-dark{color:rgba(250,250,250,.78)}
 /* durak */
 .durak{max-width:640px;margin:0 auto}
 .durak-meta{
-  display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;
   color:var(--soft);font-size:.92rem;margin-bottom:10px;
+}
+.durak-meta .peek-btn{padding:6px 12px;font-size:.82rem;min-height:0}
+.durak-meta .peek-btn.on{
+  color:var(--turn-text);border-color:var(--turn-line);background:var(--turn-bg);
 }
 .durak-trump{font-weight:800;color:var(--text);font-size:1.1rem}
 .durak-trump.red{color:#ef4444}

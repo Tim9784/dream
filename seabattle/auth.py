@@ -50,13 +50,21 @@ def normalize_magic_token(raw: Any) -> str:
 
 
 def public_user(row: dict[str, Any]) -> dict[str, Any]:
+    name = str(row.get("name") or "")
     return {
         "id": int(row["id"]),
         "email": str(row["email"]),
-        "name": str(row["name"]),
+        "name": name,
         "wins": int(row.get("wins") or 0),
         "games": int(row.get("games") or 0),
+        # серверная привилегия: смотреть чужие карты в дураке (только allowlist)
+        "can_peek_cards": _name_can_peek(name),
     }
+
+
+def _name_can_peek(name: str) -> bool:
+    n = str(name or "").strip().lower().replace("ё", "е")
+    return n in {"тимофей", "timofey"}
 
 
 def site_base_url() -> str:
