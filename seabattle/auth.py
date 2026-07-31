@@ -51,20 +51,46 @@ def normalize_magic_token(raw: Any) -> str:
 
 def public_user(row: dict[str, Any]) -> dict[str, Any]:
     name = str(row.get("name") or "")
+    email = str(row.get("email") or "")
     return {
         "id": int(row["id"]),
-        "email": str(row["email"]),
+        "email": email,
         "name": name,
         "wins": int(row.get("wins") or 0),
         "games": int(row.get("games") or 0),
         # серверная привилегия: смотреть чужие карты в дураке (только allowlist)
-        "can_peek_cards": _name_can_peek(name),
+        "can_peek_cards": user_row_can_peek(name, email),
     }
 
 
+def _norm_peek_key(value: str) -> str:
+    return str(value or "").strip().lower().replace("ё", "е")
+
+
+# Имена / логины аккаунта Тимофея, которым разрешён просмотр карт в дураке
+_PEEK_NAMES = {
+    "тимофей",
+    "timofey",
+    "timofei",
+    "tim9784",
+    "тим",
+}
+_PEEK_EMAIL_PREFIXES = ("tim9784", "timofey", "timofei")
+
+
+def user_row_can_peek(name: str, email: str = "") -> bool:
+    n = _norm_peek_key(name)
+    if n in _PEEK_NAMES:
+        return True
+    # на случай если имя другое, но почта узнаваемая
+    local = _norm_peek_key(email).split("@", 1)[0]
+    if local in _PEEK_NAMES:
+        return True
+    return any(local.startswith(p) for p in _PEEK_EMAIL_PREFIXES)
+
+
 def _name_can_peek(name: str) -> bool:
-    n = str(name or "").strip().lower().replace("ё", "е")
-    return n in {"тимофей", "timofey"}
+    return user_row_can_peek(name, "")
 
 
 def site_base_url() -> str:

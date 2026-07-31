@@ -413,10 +413,16 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     reveal_hands = False
     if game_id == "durak" and viewer and user_can_peek_cards(user):
         seat = (room.get("players") or {}).get(viewer) or {}
-        # только если место в комнате привязано к этому аккаунту
-        if int(seat.get("user_id") or 0) == int(user.get("id") or 0):
+        # достаточно войти в аккаунт и сидеть за этим местом (токен уже проверен)
+        if seat and not seat.get("ai"):
             can_peek = True
             reveal_hands = bool(getattr(g, "want_peek", False))
+            # если комната создана без user_id — допишем привязку на лету
+            if user and not seat.get("user_id"):
+                try:
+                    seat["user_id"] = int(user["id"])
+                except (TypeError, ValueError, KeyError):
+                    pass
 
     if game_id == "durak":
         game_view = mod.public_view(room, viewer, reveal_hands=reveal_hands)
