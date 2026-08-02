@@ -100,6 +100,9 @@ async function loadStats(){
   }).join('');
   const today = days[days.length-1] || {};
   $('chartHint').textContent = `Сегодня (${d.today}): ${today.visits|0} визитов · ${today.uniques|0} уников · ${today.rooms|0} партий`;
+  if(d.filter && d.filter.note){
+    $('chartHint').textContent += ' · ' + d.filter.note;
+  }
   const u = new Date((d.updated_at||0)*1000);
   $('updated').textContent = 'Обновлено: ' + u.toLocaleString('ru-RU');
 }
