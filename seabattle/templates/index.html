@@ -176,18 +176,22 @@
       </div>
     </div>
 
-    <div class="row" style="margin-top:18px">
+    <div class="row" id="setupModes" style="margin-top:18px">
       <button class="btn" id="btnCreate">По сети</button>
       <button class="btn" id="btnLocal">Вдвоём здесь</button>
       <button class="btn ghost" id="btnVsAi">С роботом</button>
+      <button class="btn hidden" id="btnSoloPlay">Играть</button>
     </div>
     <p class="hint" id="localHint" style="text-align:left;margin-top:10px">«Вдвоём здесь» — передаёте одно устройство друг другу.</p>
+    <p class="hint hidden" id="soloHint" style="text-align:left;margin-top:10px">Одиночная аркада — крути кольцо пальцем или стрелками. В рейтинг не идёт.</p>
 
-    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-    <h2 class="section-title">Есть код друга?</h2>
-    <div class="row">
-      <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" autocomplete="off"></label>
-      <button class="btn ghost" id="btnJoin" style="margin-top:22px">Войти</button>
+    <div id="setupJoinBlock">
+      <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+      <h2 class="section-title">Есть код друга?</h2>
+      <div class="row">
+        <label><span>Код комнаты</span><input id="joinCode" type="text" maxlength="6" inputmode="numeric" placeholder="123456" autocomplete="off"></label>
+        <button class="btn ghost" id="btnJoin" style="margin-top:22px">Войти</button>
+      </div>
     </div>
     <div class="err" id="setupErr"></div>
   </section>
@@ -242,6 +246,6 @@
     <a class="bugreport-link" href="https://t.me/Omovebugreport_bot" target="_blank" rel="noopener noreferrer">Сообщить о баге в Telegram</a>
   </footer>
 </div>
-<script src="/static/app.20260731d.js"></script>
+<script src="/static/app.20260802a.js"></script>
 </body>
 </html>

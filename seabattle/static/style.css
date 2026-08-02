@@ -355,6 +355,21 @@ html[data-theme="light"] .cell.preview{background:rgba(0,0,0,.12)}
 html[data-theme="light"] .ship-chip .seg{background:#3f3f46}
 .ship-chip.active{border-color:var(--accent)}
 
+/* ringball (кольцо) */
+.ringball{display:flex;flex-direction:column;align-items:center;gap:10px;margin:4px auto 0;max-width:420px}
+.ringball-hud{
+  display:flex;justify-content:space-between;align-items:baseline;gap:16px;width:100%;
+  font-variant-numeric:tabular-nums;
+}
+.ringball-score{font-family:'Syne',sans-serif;font-size:1.55rem;font-weight:800;color:var(--foam);letter-spacing:-.02em}
+.ringball-best{color:var(--soft);font-size:.92rem}
+.ringball-canvas{
+  width:min(100%,360px);height:auto;aspect-ratio:1;display:block;touch-action:none;
+  border-radius:50%;cursor:grab;background:radial-gradient(circle at 42% 36%, rgba(255,255,255,.06), transparent 55%);
+}
+.ringball-canvas:active{cursor:grabbing}
+.ringball-hint{color:var(--soft);font-size:.88rem;text-align:center;margin:0}
+
 /* tic tac toe */
 .ttt{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:320px;margin:16px auto}
 .ttt button{

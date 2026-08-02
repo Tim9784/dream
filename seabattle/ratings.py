@@ -44,6 +44,15 @@ def record_match_result(room: dict[str, Any]) -> None:
         return
     if room.get("phase") != "done":
         return
+    # соло-аркады и игры с флагом no_rating — вне рейтинга
+    try:
+        from games import GAMES
+
+        meta = GAMES.get(str(room.get("game") or ""), {}) or {}
+        if meta.get("no_rating") or meta.get("solo_only"):
+            return
+    except Exception:
+        pass
 
     players = room.get("players") or {}
     win_set = set(winner_slots(room))

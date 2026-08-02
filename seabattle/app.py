@@ -330,6 +330,9 @@ def _lobby_status_message(room: dict[str, Any]) -> str:
 
 def max_players_for(game_id: str, data: dict[str, Any] | None = None) -> int:
     data = data or {}
+    meta = GAMES.get(game_id) or {}
+    if meta.get("solo_only"):
+        return 1
     if game_id in ("durak", "blik"):
         try:
             n = int(data.get("players") or data.get("max_players") or 2)
@@ -458,6 +461,8 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
         "your_name": room["players"][viewer]["name"] if viewer and room["players"].get(viewer) else None,
         "vs_ai": bool(room.get("vs_ai")),
         "vs_local": bool(room.get("vs_local")),
+        "solo_only": bool(meta.get("solo_only")),
+        "no_rating": bool(meta.get("no_rating")),
         "max_players": int(room.get("max_players") or 2),
         "players_count": len(filled_slots(room)),
         "is_host": viewer == "p1",
@@ -465,6 +470,7 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
             room.get("phase") == "lobby"
             and not room.get("vs_ai")
             and not room.get("vs_local")
+            and not meta.get("solo_only")
             and seats_ready(room)
         ),
         "can_peek_cards": can_peek,
@@ -667,7 +673,7 @@ def api_profile():
     known = []
     seen = set()
     for gid, meta in GAMES.items():
-        if meta.get("hidden"):
+        if meta.get("hidden") or meta.get("no_rating"):
             continue
         seen.add(gid)
         row = next((x for x in by_game if x.get("game") == gid), None)
@@ -856,8 +862,17 @@ def create_room():
     vs_local = bool(data.get("vs_local"))
     if vs_ai and vs_local:
         return jsonify({"ok": False, "error": "Выбери один режим"}), 400
-    # vs AI / local — всегда двое; по сети для дурака 2–4
-    max_p = 2 if (vs_ai or vs_local) else max_players_for(game_id, data)
+    meta = GAMES[game_id]
+    solo_only = bool(meta.get("solo_only"))
+    if solo_only:
+        # соло-игры: только один игрок, без сети / hotseat / робота
+        vs_ai = False
+        vs_local = False
+    # vs AI / local — всегда двое; соло — 1; по сети для дурака 2–4
+    if solo_only:
+        max_p = 1
+    else:
+        max_p = 2 if (vs_ai or vs_local) else max_players_for(game_id, data)
     code = new_code()
     token = secrets.token_hex(16)
     size = data.get("size")
@@ -872,6 +887,8 @@ def create_room():
         msg = "Игра вдвоём на одном устройстве"
     elif vs_ai:
         msg = "Игра с компьютером"
+    elif solo_only:
+        msg = "Соло"
     else:
         msg = f"В лобби: {name} · ждём игроков… 1/{max_p}"
 
@@ -918,6 +935,8 @@ def create_room():
         }
         tokens_out["p2"] = token2
         start_game_room(room)
+    elif solo_only:
+        start_game_room(room)
 
     save_room(code, room)
     track_room_created(rds, game_id, vs_ai, vs_local)
@@ -956,6 +975,9 @@ def join_room():
         return jsonify({"ok": False, "error": "Это партия с компьютером"}), 409
     if room.get("vs_local"):
         return jsonify({"ok": False, "error": "Это локальная партия на одном устройстве"}), 409
+    join_meta = GAMES.get(room.get("game") or "") or {}
+    if join_meta.get("solo_only") or int(room.get("max_players") or 2) <= 1:
+        return jsonify({"ok": False, "error": "Это соло-игра — присоединиться нельзя"}), 409
 
     # Переподключение в уже идущую партию по своему токену
     if valid_token(token_in):
@@ -1154,8 +1176,9 @@ def rematch_room(code: str):
         })
 
     votes = room.setdefault("rematch_votes", {})
-    # локально / с роботом — сразу новая партия
-    if room.get("vs_ai") or room.get("vs_local"):
+    # локально / с роботом / соло — сразу новая партия
+    meta = GAMES.get(room.get("game") or "") or {}
+    if room.get("vs_ai") or room.get("vs_local") or meta.get("solo_only") or int(room.get("max_players") or 2) <= 1:
         restart_game_room(room)
         save_room(code, room)
         return jsonify({"ok": True, "restarted": True, "state": public_state(room, slot)})
@@ -1197,7 +1220,8 @@ def leave_room(code: str):
 
     leaver = room["players"][slot]["name"]
 
-    if room.get("vs_ai") or room.get("vs_local"):
+    meta = GAMES.get(room.get("game") or "") or {}
+    if room.get("vs_ai") or room.get("vs_local") or meta.get("solo_only") or int(room.get("max_players") or 2) <= 1:
         delete_room(code)
         return jsonify({"ok": True, "left": True})
 
