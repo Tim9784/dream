@@ -1525,7 +1525,7 @@ function renderRingball(mount, s){
   const hintEl = mount.querySelector('.ringball-hint');
 
   function ballSpeed(){
-    return 145 + score * 18;
+    return 90 + score * 10;
   }
 
   function spawnBall(){
