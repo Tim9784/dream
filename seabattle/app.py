@@ -606,7 +606,13 @@ def server_error(_err):
 
 @app.get("/")
 def index():
-    track_visit(rds, g.client_ip)
+    track_visit(
+        rds,
+        g.client_ip,
+        user_agent=request.headers.get("User-Agent") or "",
+        method=request.method,
+        headers=request.headers,
+    )
     return render_template("index.html", games=GAMES, site_title=SITE_TITLE)
 
 
