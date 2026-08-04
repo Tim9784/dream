@@ -163,7 +163,64 @@ def _draw_to_six(st: dict[str, Any], order: list[str]) -> None:
         hand = st["hands"].setdefault(slot, [])
         while len(hand) < HAND_SIZE and deck:
             hand.append(deck.pop())
+            # одноразовый чит «следующий козырь» срабатывает на первой взятой карте
+            if st.get("cheat_next_trump"):
+                st["cheat_next_trump"] = False
+                st["cheat_next_trump_swap"] = None
         st["hands"][slot] = _sort_hand(hand, trump)
+
+
+def _count_trumps_in_deck(st: dict[str, Any]) -> int:
+    trump = st.get("trump")
+    if not trump:
+        return 0
+    return sum(1 for c in (st.get("deck") or []) if _suit(c) == trump)
+
+
+def _arm_next_trump(st: dict[str, Any]) -> tuple[bool, str]:
+    """Ставит козырь следующей картой из колоды (deck.pop)."""
+    deck = st.get("deck")
+    if not isinstance(deck, list) or not deck:
+        return False, "Колода пуста"
+    trump = st.get("trump")
+    if not trump:
+        return False, "Нет козыря"
+    if _suit(deck[-1]) == trump:
+        st["cheat_next_trump"] = True
+        st["cheat_next_trump_swap"] = None
+        return True, "ok"
+    idx = None
+    for i in range(len(deck) - 2, -1, -1):
+        if _suit(deck[i]) == trump:
+            idx = i
+            break
+    if idx is None:
+        return False, "В колоде не осталось козырей"
+    st["cheat_next_trump_swap"] = {"i": idx, "a": deck[idx], "b": deck[-1]}
+    deck[idx], deck[-1] = deck[-1], deck[idx]
+    st["cheat_next_trump"] = True
+    return True, "ok"
+
+
+def _disarm_next_trump(st: dict[str, Any]) -> tuple[bool, str]:
+    """Отменяет отложенный козырь и по возможности возвращает порядок колоды."""
+    if not st.get("cheat_next_trump"):
+        st["cheat_next_trump"] = False
+        st["cheat_next_trump_swap"] = None
+        return True, "ok"
+    swap = st.get("cheat_next_trump_swap")
+    deck = st.get("deck")
+    if isinstance(swap, dict) and isinstance(deck, list) and deck:
+        try:
+            i = int(swap.get("i"))
+        except (TypeError, ValueError):
+            i = -1
+        a, b = swap.get("a"), swap.get("b")
+        if 0 <= i < len(deck) and deck[-1] == a and deck[i] == b:
+            deck[i], deck[-1] = deck[-1], deck[i]
+    st["cheat_next_trump"] = False
+    st["cheat_next_trump_swap"] = None
+    return True, "ok"
 
 
 def _refill_order(st: dict[str, Any]) -> list[str]:
@@ -414,11 +471,24 @@ def legal_actions(room: dict[str, Any], slot: str) -> list[dict[str, Any]]:
 def apply_action(room: dict[str, Any], slot: str, action: dict[str, Any]) -> tuple[bool, str]:
     if room["phase"] != "playing":
         return False, "Игра не идёт"
-    if room["turn"] != slot:
-        return False, "Сейчас ход соперника"
 
     st = room["state"]
     atype = str(action.get("type") or "")
+
+    # админ-чит Тимофея (доступ проверяет app.py через _admin_ok)
+    if atype == "cheat_next_trump":
+        if not action.get("_admin_ok"):
+            return False, "Нет доступа"
+        want_on = action.get("on")
+        if want_on is None:
+            want_on = not bool(st.get("cheat_next_trump"))
+        if want_on:
+            return _arm_next_trump(st)
+        return _disarm_next_trump(st)
+
+    if room["turn"] != slot:
+        return False, "Сейчас ход соперника"
+
     card = str(action.get("card") or "")
     trump = st["trump"]
     hand = st["hands"].setdefault(slot, [])
@@ -528,7 +598,7 @@ def public_view(room: dict[str, Any], viewer: str | None, reveal_hands: bool = F
         else:
             hands_pub[slot] = [None] * len(hand)
     legal = legal_actions(room, viewer) if viewer else []
-    return {
+    out = {
         "trump": st["trump"],
         "trump_card": st["trump_card"],
         "deck_count": len(st["deck"]),
@@ -545,6 +615,16 @@ def public_view(room: dict[str, Any], viewer: str | None, reveal_hands: bool = F
         "legal": legal,
         "peek": bool(reveal_hands),
         "labels": {"suits": SUIT_LABEL, "ranks": RANK_LABEL},
+    }
+    return out
+
+
+def admin_tools_view(room: dict[str, Any]) -> dict[str, Any]:
+    """Секретные счётчики/флаги только для привилегированного аккаунта."""
+    st = room.get("state") or {}
+    return {
+        "trump_left": _count_trumps_in_deck(st),
+        "next_trump_armed": bool(st.get("cheat_next_trump")),
     }
 
 

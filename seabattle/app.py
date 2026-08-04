@@ -434,6 +434,16 @@ def public_state(room: dict[str, Any], viewer: str | None) -> dict[str, Any]:
     if isinstance(game_view, dict):
         game_view["can_peek"] = can_peek
         game_view["peek"] = bool(reveal_hands and can_peek)
+        if can_peek and hasattr(mod, "admin_tools_view"):
+            try:
+                game_view.update(mod.admin_tools_view(room) or {})
+            except Exception:
+                pass
+            game_view["can_admin_tools"] = True
+        else:
+            game_view["can_admin_tools"] = False
+            game_view.pop("trump_left", None)
+            game_view.pop("next_trump_armed", None)
 
     win_pct = None
     if room.get("vs_ai") and viewer and room["players"].get(viewer) and not room["players"][viewer].get("ai"):
@@ -1138,6 +1148,12 @@ def room_action(code: str):
         except Exception:
             pass
     was_done = room.get("phase") == "done"
+    # админ-читы Дурака — только для аккаунта с can_peek_cards
+    if room.get("game") == "durak" and str(data.get("type") or "") == "cheat_next_trump":
+        if not user_can_peek_cards(current_user()):
+            return jsonify({"ok": False, "error": "Нет доступа"}), 403
+        data = dict(data)
+        data["_admin_ok"] = True
     ok, err = mod.apply_action(room, slot, data)
     if not ok:
         return jsonify({"ok": False, "error": err}), 400
